@@ -1,10 +1,9 @@
 
 use core::borrow;
 
-use ahash::{HashMap, HashMapExt};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{ 
-    account_info::{next_account_info, AccountInfo}, clock, config, entrypoint::ProgramResult, lamports, msg, program::{invoke, invoke_signed}, program_error::ProgramError, pubkey::{self, Pubkey}, rent::Rent, system_instruction::{self}, system_program, sysvar::Sysvar
+    account_info::{next_account_info, AccountInfo},entrypoint::ProgramResult, lamports, msg, program::{invoke, invoke_signed}, program_error::ProgramError, pubkey::{self, Pubkey}, rent::Rent, system_instruction::{self}, system_program, sysvar::Sysvar
     };
     use crate::{instruction::RNGProgramInstruction, state::{GithubRepo, User, PrCount}};
     use crate::error::RNGProgramError::{InvalidInstruction};
@@ -19,8 +18,25 @@ use solana_program::{
     
     
         match instruction { 
-       
-        
+          RNGProgramInstruction::CreateUser { github_username, phantom_wallet } => {
+            // create_user fonksiyonunu çağır
+            Self::create_user(accounts, _program_id, github_username, phantom_wallet)
+          },
+          RNGProgramInstruction:: PullRequestCount => {
+            Self::pull_request_count( accounts,_program_id)
+             },
+          RNGProgramInstruction:: CreateRepo{GithubRepo}  => {
+            Self::create_repo( accounts,_program_id,GithubRepo)
+             },
+          RNGProgramInstruction:: Transfer => {
+            Self::transfer_reward( accounts,_program_id)
+            },
+          RNGProgramInstruction:: GetUser{phantom_wallet}  => {
+            Self::get_user( accounts,_program_id,phantom_wallet)
+              },
+          RNGProgramInstruction:: GetPRepo => {
+             Self::get_pull_requests_per_repo( accounts,_program_id)
+             },
         }
       }
 
@@ -38,7 +54,6 @@ use solana_program::{
           msg!("payer is not a signer");
           return Err(ProgramError::MissingRequiredSignature);
         }
-        
          // PDA hesabı oluşturma
        let (user_pda_address, bump) = Pubkey::find_program_address(
       &[b"user_pda", github_username.as_bytes()], 
@@ -51,6 +66,13 @@ use solana_program::{
       return Err(ProgramError::InvalidArgument);
          }
 
+         // hesabin bos olup olmadigini kontrol ederek hesabin olup olmadigina bakariz
+          if user.lamports() > 0 {
+            msg!("User with this Pubkey already exists.");
+            return Err(ProgramError::AccountAlreadyInitialized);
+          }
+
+          // hesap yoksa olustur
         let rent = Rent::default();
         let user_rent = rent.minimum_balance(52);
 
@@ -62,12 +84,11 @@ use solana_program::{
           ]
           )?;
           
-          
         let user_info = User {
           github_username,
           phantom_wallet,
          };
-
+        
         user_info.serialize(&mut &mut user.try_borrow_mut_data()?[..])?;
         
         Ok(())
@@ -201,6 +222,32 @@ use solana_program::{
          Ok(())
   }
  
+ // parametre gelen publickey varsa getir
+ pub fn get_user(
+  accounts: &[AccountInfo],
+ _program_id: &Pubkey,
+  phantom_wallet: [u8; 32],
+    ) -> ProgramResult {
+ let account_info_iter = &mut accounts.iter();
+ let user = next_account_info(account_info_iter)?;
+
+    // verileri oku
+    let user_data = User::try_from_slice(&user.data.borrow())?;
+     
+     // parametre geln phantom wallet adresi ile kullancinin adresi ayni mi?
+    if user_data.phantom_wallet != phantom_wallet {
+      msg!("No user found with the provided phantom wallet.");
+      return Err(ProgramError::InvalidArgument);
+    }
+
+    msg!(
+      "User: {}, Phantom Wallet: {:?}",
+      user_data.github_username,
+      user_data.phantom_wallet
+  );
+      
+ Ok(())
+}
     // Hangi repo kac pull request
       pub fn get_pull_requests_per_repo(
       accounts: &[AccountInfo],

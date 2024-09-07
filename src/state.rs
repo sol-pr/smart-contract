@@ -23,22 +23,4 @@ pub struct PrCount{
     pub prcount: u64,
 }
 
-// impl Default for User {
-//     fn default() -> Self {
-//         User {
-//             github_username: String::new(),
-//             phantom_wallet: [0; 32],
-//             total_pull_request_count: 0,
-//             pull_requests_per_repo: HashMap::new(),
-//         }
-//     }
-// }
-// count ile pull_request_limit esitse transfer yap
-// esit degilse devam 
-
-// kullancii olusturma
-//yeni repo olusturma
-// transfer yapma
-
-// twitter
 
