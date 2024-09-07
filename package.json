@@ -1,0 +1,25 @@
+{
+  "name": "sol-pr_contract",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "ts-node client/main.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+
+  "dependencies": {
+    "@solana/web3.js": "^1.95.3",
+    "borsh": "0.7.0", 
+    "save-dev": "^0.0.1-security",
+    "typescript": "^5.5.4"
+  },
+  "devDependencies": {
+    "@types/bn.js": "^5.1.5",
+    "ts-node": "^10.0.0",
+    "typescript": "^4.0.0"
+  }
+}
