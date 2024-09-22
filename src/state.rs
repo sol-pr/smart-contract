@@ -7,20 +7,26 @@ use solana_program::pubkey::Pubkey;
 pub struct User{
     pub github_username: String, 
     pub phantom_wallet:[u8; 32], 
+    pub totalearn: u64, // toplam kazanc
+    pub submitted_at: u64, // kullanicinin bu hafta yaptigi pr sayisi
+    pub total_pr_count: u64,
+    pub is_new_user: u8
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
 pub struct GithubRepo {
     pub repo_url: String, 
-    pub total_pull_requests: u32,
+    pub repo_name: String,
+    pub repo_description: String,
+    pub total_pull_requests: u64, // populer repolaro belirlerim
     pub pull_request_limit: u64, 
     pub reward_per_pull_request: u64, // Her pull request için ödül miktarı 
     pub owner_wallet_address: [u8; 32],  // repo sahibinin cuzdan adresi
+    pub created_at:u64, // en yeni repolar
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
 pub struct PrCount{
     pub prcount: u64,
 }
-
 

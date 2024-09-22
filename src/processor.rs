@@ -3,7 +3,7 @@ use core::borrow;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{ 
-    account_info::{next_account_info, AccountInfo},entrypoint::ProgramResult, lamports, msg, program::{invoke, invoke_signed}, program_error::ProgramError, pubkey::{self, Pubkey}, rent::Rent, system_instruction::{self}, system_program, sysvar::Sysvar
+    account_info::{next_account_info, AccountInfo}, clock::{self, Clock}, entrypoint::ProgramResult, lamports, msg, program::{invoke, invoke_signed}, program_error::ProgramError, pubkey::{self, Pubkey}, rent::Rent, system_instruction::{self}, system_program, sysvar::Sysvar
     };
     use crate::{instruction::RNGProgramInstruction, state::{GithubRepo, User, PrCount}};
     use crate::error::RNGProgramError::{InvalidInstruction};
@@ -18,12 +18,14 @@ use solana_program::{
     
     
         match instruction { 
-          RNGProgramInstruction::CreateUser { github_username, phantom_wallet } => {
-            // create_user fonksiyonunu çağır
-            Self::create_user(accounts, _program_id, github_username, phantom_wallet)
+          RNGProgramInstruction::TotalPrCount {User} => {
+            Self::total_pull_request_count(accounts, _program_id, User)
           },
-          RNGProgramInstruction:: PullRequestCount => {
-            Self::pull_request_count( accounts,_program_id)
+          RNGProgramInstruction::ManageUser {User} => {
+            Self::manage_user(accounts, _program_id, User)
+          },
+          RNGProgramInstruction:: PullRequestCount{PrCount} => {
+            Self::pull_request_count( accounts,_program_id,PrCount)
              },
           RNGProgramInstruction:: CreateRepo{GithubRepo}  => {
             Self::create_repo( accounts,_program_id,GithubRepo)
@@ -40,11 +42,44 @@ use solana_program::{
         }
       }
 
-      pub fn create_user (
+      // Kullanicinin yaptigi toplam pr sayisini sayan sayac
+      pub fn total_pull_request_count(
         accounts: &[AccountInfo],
         program_id: &Pubkey,
-        github_username: String,
-        phantom_wallet: [u8; 32],
+        data:User
+      ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let payer = next_account_info(account_info_iter)?;
+        let user = next_account_info(account_info_iter)?;
+  
+        let user_data = User::try_from_slice(&user.data.borrow())?;
+
+        let mut serialized_data = vec![];
+        data.serialize(&mut serialized_data)?;
+
+        let rent = Rent::default();
+        let total_pr_count_rent = rent.minimum_balance(serialized_data.len());
+  
+        let(total_pr_counter_address, bump) = Pubkey::find_program_address(
+          &[b"total pull request counter", &user_data.phantom_wallet, user_data.github_username.to_string().as_ref()], 
+          program_id);
+  
+        invoke_signed ( 
+          &system_instruction::create_account(payer.key, &total_pr_counter_address,total_pr_count_rent , serialized_data.len() as u64, program_id),
+          &[user.clone(),payer.clone()],
+          &[
+            &[b"total pull request counter",  &user_data.phantom_wallet,user_data.github_username.to_string().as_ref(), &[bump]]
+          ]
+        )?;
+
+        Ok(())
+      }
+
+      // kullanci kontrolu, yoksa olustur
+      pub fn manage_user (
+        accounts: &[AccountInfo],
+        program_id: &Pubkey,
+        data:User,
       ) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
         let payer = next_account_info(account_info_iter)?;
@@ -54,74 +89,124 @@ use solana_program::{
           msg!("payer is not a signer");
           return Err(ProgramError::MissingRequiredSignature);
         }
+      
          // PDA hesabı oluşturma
-       let (user_pda_address, bump) = Pubkey::find_program_address(
-      &[b"user_pda", github_username.as_bytes()], 
-      program_id
+        let (user_pda_address, bump) = Pubkey::find_program_address(
+        &[b"user_pda", data.github_username.as_bytes()], 
+        program_id
          );
 
          // 'user' hesabı PDA adresi ile aynı mı kontrol et
         if &user_pda_address != user.key {
-      msg!("Provided user account does not match derived PDA.");
-      return Err(ProgramError::InvalidArgument);
+         msg!("Provided user account does not match derived PDA.");
+        return Err(ProgramError::InvalidArgument);
          }
 
          // hesabin bos olup olmadigini kontrol ederek hesabin olup olmadigina bakariz
-          if user.lamports() > 0 {
-            msg!("User with this Pubkey already exists.");
-            return Err(ProgramError::AccountAlreadyInitialized);
+         if user.lamports() > 0 {
+          // Kullanıcı varsa
+          let mut user_data = User::try_from_slice(&user.data.borrow())?;
+  
+          if user_data.is_new_user == 1 {
+              msg!("User with this Pubkey already exists.");
+              return Err(ProgramError::AccountAlreadyInitialized);
+          } else {
+              msg!("User exists. Proceed with login.");
+  
+              // Giriş sırasında eşleşmeleri kontrol et
+              if user_data.github_username != data.github_username {
+                  msg!("GitHub username mismatch.");
+                  return Err(ProgramError::InvalidAccountData);
+              }
+  
+              if user_data.phantom_wallet != data.phantom_wallet {
+                  msg!("Phantom wallet mismatch.");
+                  return Err(ProgramError::InvalidAccountData);
+              }
+  
+              // Eğer tüm kontroller doğruysa, kullanıcı giriş işlemi başarıyla tamamlanır
+              msg!("Login successful for GitHub username: {}", user_data.github_username);
+  
+              return Ok(());
           }
+      }
+        // Kullanıcı yoksa
+        if data.is_new_user == 1 {
 
-          // hesap yoksa olustur
-        let rent = Rent::default();
-        let user_rent = rent.minimum_balance(52);
+          let clock = clock::Clock::get()?; 
+          let current_time = clock.unix_timestamp as u64; // UNIX zaman damgası, 1970'ten itibaren geçen saniye sayısını temsil eder.
+    
+          let mut serialized_data = vec![];
+          data.serialize(&mut serialized_data)?;
 
-        invoke_signed ( 
-          &system_instruction::create_account(payer.key, &user_pda_address, user_rent,52, program_id),
-          &[user.clone(),payer.clone()],
-          &[
-            &[b"user_pda",github_username.as_bytes(), &[bump]]
-          ]
+  
+          let rent = Rent::default();
+          let user_rent = rent.minimum_balance(serialized_data.len());
+  
+          invoke_signed(
+              &system_instruction::create_account(
+                  payer.key,
+                  &user_pda_address,
+                  user_rent,
+                  serialized_data.len() as u64,
+                  program_id,
+              ),
+              &[user.clone(), payer.clone()],
+              &[&[b"user_pda", data.github_username.as_bytes(), &[bump]]],
           )?;
-          
-        let user_info = User {
-          github_username,
-          phantom_wallet,
-         };
-        
-        user_info.serialize(&mut &mut user.try_borrow_mut_data()?[..])?;
-        
-        Ok(())
+  
+          // Yeni kullanıcı bilgilerini kaydet
+          let user_info = User {
+              github_username: data.github_username,
+              phantom_wallet: data.phantom_wallet,
+              totalearn: 0,
+              submitted_at: current_time, // kullancinin olusturukdugu zaman
+              total_pr_count: 0,
+              is_new_user: data.is_new_user, // Yeni kullanıcı olduğu için sıfıra set ediliyor
+          };
+  
+          user_info.serialize(&mut &mut user.try_borrow_mut_data()?[..])?;
+  
+          msg!("New user created and stored.");
+      } else {
+          msg!("User does not exist for login.");
+          return Err(ProgramError::UninitializedAccount);
+      }
+  
+      Ok(())
       }
 
+      // odul icin repo basina pr sayisini sayan sayac
       pub fn pull_request_count (
         accounts: &[AccountInfo],
         program_id: &Pubkey,
-    ) -> ProgramResult {
+        data:PrCount
+      ) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
-        let payer = next_account_info(account_info_iter)?;
-        let user = next_account_info(account_info_iter)?;
-  
-        let user_data = User::try_from_slice(&user.data.borrow())?;
+        let payer = next_account_info(account_info_iter)?;  
 
-        let rent = Rent:: default();
-        let pr_count_rent = rent.minimum_balance(8);
+        let mut serialized_data = vec![];
+        data.serialize(&mut serialized_data)?;
+
+        let rent = Rent::default();
+        let pr_count_rent = rent.minimum_balance(serialized_data.len());
   
         let(pr_counter_address, bump) = Pubkey::find_program_address(
-          &[b"pull request counter", &user_data.phantom_wallet], 
+          &[b"pull request counter"], 
           program_id);
   
         invoke_signed ( 
-          &system_instruction::create_account(payer.key, &pr_counter_address,pr_count_rent , 8, program_id),
-          &[user.clone(),payer.clone()],
+          &system_instruction::create_account(payer.key, &pr_counter_address,pr_count_rent , serialized_data.len() as u64, program_id),
+          &[payer.clone()],
           &[
-            &[b"pull request counter",  &user_data.phantom_wallet, &[bump]]
+            &[b"pull request counter",&[bump]]
           ]
         )?;
 
         Ok(())
       }
 
+     // yeni repo olustur 
       pub fn create_repo (
         accounts: &[AccountInfo],
         program_id: &Pubkey,
@@ -135,6 +220,10 @@ use solana_program::{
           msg!("payer is not a signer");
           // return Err(AuthorityError.into());
         }
+
+        let clock = Clock::get()?;
+        let current_time = clock.unix_timestamp as u64;
+
         let repo_data = GithubRepo::try_from_slice(&github_repo_account.data.borrow())?;
         
         let(repo_pda_address, bump) = Pubkey::find_program_address(
@@ -155,15 +244,55 @@ use solana_program::{
           ]
           )?;
 
-        // Veriyi yeni hesaba kaydet
-        let mut repo_data_account = github_repo_account.try_borrow_mut_data()?;
+           // Yeni repo verisini oluşturun
+           let repo_info = GithubRepo {
+            repo_url: data.repo_url,
+            repo_name: data.repo_name,
+            repo_description: data.repo_description,
+            total_pull_requests: 0, 
+            pull_request_limit: data.pull_request_limit,
+            reward_per_pull_request: data.reward_per_pull_request, 
+            owner_wallet_address: data.owner_wallet_address, // repo saihibinin cuzdan adresi
+            created_at: current_time, //mevcut zaman
+              
+        };
 
-        // Serileştirilmiş veriyi doğrudan kaydedin
-          repo_data_account[..serialized_data.len()].copy_from_slice(&serialized_data);
-        
+        repo_info.serialize(&mut &mut github_repo_account.try_borrow_mut_data()?[..])?;
+      
         Ok(())
       }
      
+     // halihazirda olan repolari goruntule
+      pub fn get_repos(
+        accounts: &[AccountInfo],
+        program_id: &Pubkey,
+        filter_date: u64, // bu tarihten sonra olusturulmus repolari goruntule
+      ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let payer = next_account_info(account_info_iter)?;
+        let github_repo_account = next_account_info(account_info_iter)?;
+    
+        if !payer.is_signer {
+            msg!("payer is not a signer");
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+    
+        let repo_data = GithubRepo::try_from_slice(&github_repo_account.data.borrow())?;
+        
+      // Eğer repo 'filter_date' den daha yeni oluşturulmuşsa göster
+    if repo_data.created_at > filter_date {
+      msg!("Newest repo:");
+      msg!("Repo URL: {}", repo_data.repo_url);
+      msg!("Repo Name: {}", repo_data.repo_name);
+      msg!("Repo Description: {}", repo_data.repo_description);
+      msg!("Creation Date: {}", repo_data.created_at);
+    } else {
+      msg!("No new repo was found after the specified date.");
+    }
+    
+        Ok(())
+    }
+   
       // odul transfer fonks
       pub fn transfer_reward (
         accounts: &[AccountInfo],
@@ -174,6 +303,7 @@ use solana_program::{
         let user = next_account_info(account_info_iter)?;
         let github_repo_account = next_account_info(account_info_iter)?;
         let pr_count = next_account_info(account_info_iter)?;
+        let total_pr_count = next_account_info(account_info_iter)?;
 
         if !payer.is_signer {
           msg!("payer is not a signer");
@@ -183,7 +313,6 @@ use solana_program::{
         let mut user_data = User::try_from_slice(&user.data.borrow())?;
         let mut repo_data = GithubRepo::try_from_slice(&github_repo_account.data.borrow())?;
         let mut pr_count_data = PrCount::try_from_slice(&pr_count.data.borrow())?;
-
 
         let (transfer_pda_address, bump) = Pubkey::find_program_address(
           &[b"transfer",user_data.github_username.as_bytes(),repo_data.repo_url.as_bytes()], 
@@ -209,12 +338,19 @@ use solana_program::{
             &[payer.clone(), user.clone()],
         )?;
 
-        // count guncelle
+          // count guncelle
            pr_count_data.prcount = pr_count_data.prcount.checked_sub(repo_data.pull_request_limit).ok_or(ProgramError::InvalidAccountData)?;
         
-      }
+        }
+
         // pr sayisini arttiralim
         pr_count_data.prcount = pr_count_data.prcount.checked_add(1).ok_or(InvalidInstruction)?;
+         
+        //top pr sayisini her kosulda arttircaz
+        user_data.total_pr_count = user_data.total_pr_count.checked_add(1).ok_or(ProgramError::InvalidAccountData)?;
+        
+        // toplam elde edolen kazanc
+        user_data.totalearn = user_data.totalearn.checked_add(repo_data.reward_per_pull_request).ok_or(InvalidInstruction)?; 
 
         let mut pr_count_data_account = pr_count.try_borrow_mut_data()?;
         pr_count_data.serialize(&mut &mut pr_count_data_account[..])?;
@@ -222,37 +358,54 @@ use solana_program::{
          Ok(())
   }
  
- // parametre gelen publickey varsa getir
- pub fn get_user(
-  accounts: &[AccountInfo],
- _program_id: &Pubkey,
-  phantom_wallet: [u8; 32],
-    ) -> ProgramResult {
- let account_info_iter = &mut accounts.iter();
- let user = next_account_info(account_info_iter)?;
+    // parametre gelen publickey varsa getir
+      pub fn get_user(
+      accounts: &[AccountInfo],
+      _program_id: &Pubkey,
+      phantom_wallet: [u8; 32],
+      ) -> ProgramResult {
+      let account_info_iter = &mut accounts.iter();
+      let user = next_account_info(account_info_iter)?;
 
-    // verileri oku
-    let user_data = User::try_from_slice(&user.data.borrow())?;
-     
+     // verileri oku
+     let mut user_data = User::try_from_slice(&user.data.borrow())?;
+            
      // parametre geln phantom wallet adresi ile kullancinin adresi ayni mi?
     if user_data.phantom_wallet != phantom_wallet {
       msg!("No user found with the provided phantom wallet.");
       return Err(ProgramError::InvalidArgument);
     }
 
-    msg!(
-      "User: {}, Phantom Wallet: {:?}",
-      user_data.github_username,
-      user_data.phantom_wallet
-  );
-      
- Ok(())
-}
+     let clock = Clock::get()?;
+     let current_time = clock.unix_timestamp as u64;
+ 
+     // 1 hafta 604800 saniye
+     let one_week_in_seconds = 604800;
+
+     // Eğer bir hafta geçmişse haftalik pr sayisini sifirlariz
+    if current_time - user_data.submitted_at >= one_week_in_seconds {
+      msg!("A week has passed since the last PR count reset. Resetting weekly PR count.");
+      user_data.total_pr_count = 0;
+      user_data.submitted_at = current_time;
+     }
+       msg!(
+    "User: {}, Phantom Wallet: {:?}, Weekly PR Count: {}, Total Earnings: {}",
+       user_data.github_username,
+       user_data.phantom_wallet,
+       user_data.total_pr_count,    
+       user_data.totalearn   
+        );
+
+     user_data.serialize(&mut &mut user.try_borrow_mut_data()?[..])?;
+
+       Ok(())
+      }
+    
     // Hangi repo kac pull request
       pub fn get_pull_requests_per_repo(
       accounts: &[AccountInfo],
      _program_id: &Pubkey,
-        ) -> ProgramResult {
+      ) -> ProgramResult {
      let account_info_iter = &mut accounts.iter();
      let user = next_account_info(account_info_iter)?;
      let github_repo_account = next_account_info(account_info_iter)?;
@@ -270,8 +423,12 @@ use solana_program::{
         pr_count_data.prcount
           );
      Ok(())
-  }
- }
+       }
+       
+       }
 
      
-     
+
+
+ 
+//  4-En yeni repolar getirilecek, bunun için repo struct içine oluşturma tarihi ekleencek
