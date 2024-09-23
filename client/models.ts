@@ -6,17 +6,15 @@ export class User {
   totalearn: bigint = BigInt(0);
   submitted_at: bigint = BigInt(0);
   total_pr_count: bigint = BigInt(0);
-  is_new_user: number = 0;
 
 
-  constructor(fields: { github_username:string; phantom_wallet:Uint8Array; totalearn:bigint; submitted_at:bigint; total_pr_count:bigint; is_new_user:number;} | undefined = undefined) {
+  constructor(fields: { github_username:string; phantom_wallet:Uint8Array; totalearn:bigint; submitted_at:bigint; total_pr_count:bigint;} | undefined = undefined) {
     if (fields) {
       this.github_username = fields.github_username;
       this.phantom_wallet = fields.phantom_wallet;
       this.totalearn = fields.totalearn;
       this.submitted_at = fields.submitted_at;
       this.total_pr_count = fields.total_pr_count;
-      this.is_new_user = fields.is_new_user;
     }
   }
 }
@@ -30,7 +28,6 @@ export const UserShema = new Map([
       ["totalearn", "u64"],
       ["submitted_at", "u64"],
       ["total_pr_count", "u64"],
-      ["is_new_user", "u8"],
     ]
   }]
 ]);
