@@ -91,16 +91,16 @@ const pull_request_count = async () => {
 
 }
 
-  const create_user = async(github_username: string, phantom_wallet: Uint8Array) => {
-    const user = new User();
-    user.github_username = github_username.toString();
-    user.phantom_wallet = phantom_wallet;
-    user.totalearn = BigInt(0);
-    user.submitted_at = BigInt(0);
-    user.total_pr_count = BigInt(0);
+const create_user = async (github_username: string, phantom_wallet: Uint8Array) => {
+  const user = new User();
+  user.github_username = github_username.toString();
+  user.phantom_wallet = phantom_wallet;
+  user.totalearn = BigInt(0);
+  user.submitted_at = BigInt(0);
+  user.total_pr_count = BigInt(0);
 
-    const encoded = serialize(UserShema, user);
-    const concat = Uint8Array.of(1, ...encoded);
+  const encoded = serialize(UserShema, user);
+  const concat = Uint8Array.of(1, ...encoded);
 
   const userPDA = PublicKey.findProgramAddressSync([Buffer.from("user_pda"), Buffer.from(github_username)], program_id);
 
@@ -129,6 +129,24 @@ const pull_request_count = async () => {
   connection.sendTransaction(tx);
   console.log("New users account => " + userPDA[0])
 
-  }
+}
 
-  //kullancii getit ekle -> kullaniciyi donsun 
+
+const getUser = async (phantomWallet: Uint8Array): Promise<string> => {
+
+  const publicKey = PublicKey.findProgramAddressSync([Buffer.from("user_pda"), Buffer.from(phantomWallet)], program_id);
+  const user_read = await connection.getAccountInfo(publicKey[0]);
+
+  if (user_read == null) {
+    return "kullanici bulunamadi";
+  }
+  const user_deserialized = deserialize(UserShema, User, user_read.data);
+  return user_deserialized.github_username.toString();
+}
+
+
+(async () => {
+  const user = await getUser(payer.publicKey.toBytes());
+
+  console.log(user);
+})();
