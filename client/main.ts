@@ -102,7 +102,7 @@ const create_user = async (github_username: string, phantom_wallet: Uint8Array) 
   const encoded = serialize(UserShema, user);
   const concat = Uint8Array.of(1, ...encoded);
 
-  const userPDA = PublicKey.findProgramAddressSync([Buffer.from("user_pda"), Buffer.from(github_username)], program_id);
+  const userPDA = PublicKey.findProgramAddressSync([Buffer.from("user_pda"), Buffer.from(phantom_wallet)], program_id);
 
 
   const instruction = new TransactionInstruction({
@@ -131,7 +131,6 @@ const create_user = async (github_username: string, phantom_wallet: Uint8Array) 
 
 }
 
-
 const getUser = async (phantomWallet: Uint8Array): Promise<string> => {
 
   const publicKey = PublicKey.findProgramAddressSync([Buffer.from("user_pda"), Buffer.from(phantomWallet)], program_id);
@@ -144,9 +143,18 @@ const getUser = async (phantomWallet: Uint8Array): Promise<string> => {
   return user_deserialized.github_username.toString();
 }
 
-
 (async () => {
-  const user = await getUser(payer.publicKey.toBytes());
+  try {
+    const pubkey = new PublicKey("BUBtN9W8Ypt7S1w5otZVM7cU8HTgM7M2CjTt4z1L1Net");
+    const userName = "bgraokmsuh";
+    const createUser = await create_user(userName, pubkey.toBytes());
 
-  console.log(user);
+    console.log(createUser);
+  } catch (error) {
+    console.log(error);
+
+  }
+
+  // const user = await getUser(pubkey.toBytes());
+  // console.log(user);
 })();
