@@ -10,7 +10,6 @@ pub struct User{
     pub totalearn: u64, // toplam kazanc
     pub submitted_at: u64, // kullanicinin bu hafta yaptigi pr sayisi
     pub total_pr_count: u64,
-    pub is_new_user: u8
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]

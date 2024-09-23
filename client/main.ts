@@ -90,18 +90,16 @@ import {
 
   }
 
-  const manage_user = async(github_username: string, phantom_wallet: Uint8Array, is_new_user: number) => {
+  const create_user = async(github_username: string, phantom_wallet: Uint8Array) => {
     const user = new User();
     user.github_username = github_username.toString();
     user.phantom_wallet = phantom_wallet;
     user.totalearn = BigInt(0);
     user.submitted_at = BigInt(0);
     user.total_pr_count = BigInt(0);
-    user.is_new_user = is_new_user;
 
     const encoded = serialize(UserShema, user);
     const concat = Uint8Array.of(1, ...encoded);
-
 
     const userPDA = PublicKey.findProgramAddressSync([Buffer.from("user_pda"), Buffer.from(github_username)], program_id);
 
@@ -131,3 +129,5 @@ import {
     console.log("New users account => " + userPDA[0])
 
   }
+
+  //kullancii getit ekle -> kullaniciyi donsun 

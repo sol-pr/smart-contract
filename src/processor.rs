@@ -22,7 +22,7 @@ use solana_program::{
             Self::total_pull_request_count(accounts, _program_id, User)
           },
           RNGProgramInstruction::ManageUser {User} => {
-            Self::manage_user(accounts, _program_id, User)
+            Self::create_user(accounts, _program_id, User)
           },
           RNGProgramInstruction:: PullRequestCount{PrCount} => {
             Self::pull_request_count( accounts,_program_id,PrCount)
@@ -76,7 +76,7 @@ use solana_program::{
       }
 
       // kullanci kontrolu, yoksa olustur
-      pub fn manage_user (
+      pub fn create_user (
         accounts: &[AccountInfo],
         program_id: &Pubkey,
         data:User,
@@ -92,7 +92,7 @@ use solana_program::{
       
          // PDA hesabı oluşturma
         let (user_pda_address, bump) = Pubkey::find_program_address(
-        &[b"user_pda", data.github_username.as_bytes()], 
+        &[b"user_pda", data.github_username.as_bytes(), &data.phantom_wallet], 
         program_id
          );
 
@@ -101,80 +101,45 @@ use solana_program::{
          msg!("Provided user account does not match derived PDA.");
         return Err(ProgramError::InvalidArgument);
          }
+   
+         let mut serialized_data = vec![];
+         data.serialize(&mut serialized_data)?;
 
-         // hesabin bos olup olmadigini kontrol ederek hesabin olup olmadigina bakariz
-         if user.lamports() > 0 {
-          // Kullanıcı varsa
-          let mut user_data = User::try_from_slice(&user.data.borrow())?;
-  
-          if user_data.is_new_user == 1 {
-              msg!("User with this Pubkey already exists.");
-              return Err(ProgramError::AccountAlreadyInitialized);
-          } else {
-              msg!("User exists. Proceed with login.");
-  
-              // Giriş sırasında eşleşmeleri kontrol et
-              if user_data.github_username != data.github_username {
-                  msg!("GitHub username mismatch.");
-                  return Err(ProgramError::InvalidAccountData);
-              }
-  
-              if user_data.phantom_wallet != data.phantom_wallet {
-                  msg!("Phantom wallet mismatch.");
-                  return Err(ProgramError::InvalidAccountData);
-              }
-  
-              // Eğer tüm kontroller doğruysa, kullanıcı giriş işlemi başarıyla tamamlanır
-              msg!("Login successful for GitHub username: {}", user_data.github_username);
-  
-              return Ok(());
-          }
-      }
-        // Kullanıcı yoksa
-        if data.is_new_user == 1 {
-
-          let clock = clock::Clock::get()?; 
-          let current_time = clock.unix_timestamp as u64; // UNIX zaman damgası, 1970'ten itibaren geçen saniye sayısını temsil eder.
+ 
+         let rent = Rent::default();
+         let user_rent = rent.minimum_balance(serialized_data.len());
+ 
+         invoke_signed(
+             &system_instruction::create_account(
+                 payer.key,
+                 &user_pda_address,
+                 user_rent,
+                 serialized_data.len() as u64,
+                 program_id,
+             ),
+             &[user.clone(), payer.clone()],
+             &[&[b"user_pda", data.github_username.as_bytes(),&data.phantom_wallet, &[bump]]],
+         )?;
+ 
+         // Yeni kullanıcı bilgilerini kaydet
+         let user_info = User {
+             github_username: data.github_username,
+             phantom_wallet: data.phantom_wallet,
+             totalearn: 0,
+             submitted_at: 0,
+             total_pr_count: 0,
+         };
+ 
+         user_info.serialize(&mut &mut user.try_borrow_mut_data()?[..])?;
+ 
+         msg!("New user created and stored.");
     
-          let mut serialized_data = vec![];
-          data.serialize(&mut serialized_data)?;
-
-  
-          let rent = Rent::default();
-          let user_rent = rent.minimum_balance(serialized_data.len());
-  
-          invoke_signed(
-              &system_instruction::create_account(
-                  payer.key,
-                  &user_pda_address,
-                  user_rent,
-                  serialized_data.len() as u64,
-                  program_id,
-              ),
-              &[user.clone(), payer.clone()],
-              &[&[b"user_pda", data.github_username.as_bytes(), &[bump]]],
-          )?;
-  
-          // Yeni kullanıcı bilgilerini kaydet
-          let user_info = User {
-              github_username: data.github_username,
-              phantom_wallet: data.phantom_wallet,
-              totalearn: 0,
-              submitted_at: current_time, // kullancinin olusturukdugu zaman
-              total_pr_count: 0,
-              is_new_user: data.is_new_user, // Yeni kullanıcı olduğu için sıfıra set ediliyor
-          };
-  
-          user_info.serialize(&mut &mut user.try_borrow_mut_data()?[..])?;
-  
-          msg!("New user created and stored.");
-      } else {
-          msg!("User does not exist for login.");
-          return Err(ProgramError::UninitializedAccount);
+        Ok(())
+         
       }
-  
-      Ok(())
-      }
+        
+      
+      
 
       // odul icin repo basina pr sayisini sayan sayac
       pub fn pull_request_count (
@@ -396,7 +361,7 @@ use solana_program::{
        user_data.totalearn   
         );
 
-     user_data.serialize(&mut &mut user.try_borrow_mut_data()?[..])?;
+     user_data.serialize(&mut &mut user.try_borrow_mut_data()?[..])?; 
 
        Ok(())
       }
