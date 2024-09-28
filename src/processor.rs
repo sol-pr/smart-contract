@@ -1,4 +1,5 @@
 use core::borrow;
+use std::net::ToSocketAddrs;
 
 use crate::error::RNGProgramError::InvalidInstruction;
 use crate::{
@@ -106,7 +107,12 @@ impl Processor {
     ) -> ProgramResult {
           let account_info_iter = &mut accounts.iter();
           let payer = next_account_info(account_info_iter)?;
+          let user = next_account_info(account_info_iter)?;
+          let github_repo_account = next_account_info(account_info_iter)?;
   
+          let user_data = User::try_from_slice(&user.data.borrow())?;
+          let repo_data = GithubRepo::try_from_slice(&github_repo_account.data.borrow())?;
+
           let mut serialized_data = vec![];
           data.serialize(&mut serialized_data)?;
   
@@ -114,7 +120,7 @@ impl Processor {
           let pr_count_rent = rent.minimum_balance(serialized_data.len());
   
           let (pr_counter_address, bump) =
-              Pubkey::find_program_address(&[b"pull request counter"], program_id);
+              Pubkey::find_program_address(&[b"pull request counter", user_data.github_username.to_string().as_ref(),repo_data.repo_url.to_string().as_ref()], program_id);
   
           invoke_signed(
               &system_instruction::create_account(
@@ -125,7 +131,7 @@ impl Processor {
                   program_id,
               ),
               &[payer.clone()],
-              &[&[b"pull request counter", &[bump]]],
+              &[&[b"pull request counter",user_data.github_username.to_string().as_ref(),repo_data.repo_url.to_string().as_ref(), &[bump]]],
           )?;
   
           Ok(())
@@ -216,7 +222,7 @@ impl Processor {
           user_data.total_pr_count = 0;
           user_data.submitted_at = current_time;
       }
-      
+
       msg!(
           "User: {}, Phantom Wallet: {:?}, Weekly PR Count: {}, Total Earnings: {}",
           user_data.github_username,
@@ -345,7 +351,7 @@ impl Processor {
             ],
             program_id,
         );
-
+        //seed icindeki countu alip kiyasla
         // pr sayisi limitine ulasildi mi?
         if pr_count_data.prcount >= repo_data.pull_request_limit {
             let transfer_amount = repo_data.reward_per_pull_request;
@@ -416,3 +422,11 @@ impl Processor {
 }
 
 //  4-En yeni repolar getirilecek, bunun için repo struct içine oluşturma tarihi ekleencek
+
+ // kullanci olacak, kullanici adi publickey kac pr yaptigi toplam kazanc, vs yeni kullanici= 0
+ // kayit olmadan kullanicinin publickyi ile sorgulama - tum bilgileri getir
+ // hesap olsuturma
+
+
+ // heangi repo icin
+ 
