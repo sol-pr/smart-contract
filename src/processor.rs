@@ -98,6 +98,39 @@ impl Processor {
         Ok(())
     }
 
+    // odul icin repo basina pr sayisini sayan sayac
+    pub fn pull_request_count(
+          accounts: &[AccountInfo],
+          program_id: &Pubkey,
+          data: PrCount,
+    ) -> ProgramResult {
+          let account_info_iter = &mut accounts.iter();
+          let payer = next_account_info(account_info_iter)?;
+  
+          let mut serialized_data = vec![];
+          data.serialize(&mut serialized_data)?;
+  
+          let rent = Rent::default();
+          let pr_count_rent = rent.minimum_balance(serialized_data.len());
+  
+          let (pr_counter_address, bump) =
+              Pubkey::find_program_address(&[b"pull request counter"], program_id);
+  
+          invoke_signed(
+              &system_instruction::create_account(
+                  payer.key,
+                  &pr_counter_address,
+                  pr_count_rent,
+                  serialized_data.len() as u64,
+                  program_id,
+              ),
+              &[payer.clone()],
+              &[&[b"pull request counter", &[bump]]],
+          )?;
+  
+          Ok(())
+      }
+
     // kullanci kontrolu, yoksa olustur
     pub fn create_user(accounts: &[AccountInfo], program_id: &Pubkey, data: User) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
@@ -152,39 +185,50 @@ impl Processor {
 
         Ok(())
     }
-
-    // odul icin repo basina pr sayisini sayan sayac
-    pub fn pull_request_count(
-        accounts: &[AccountInfo],
-        program_id: &Pubkey,
-        data: PrCount,
+ 
+    // parametre gelen publickey varsa getir
+    pub fn get_user(
+      accounts: &[AccountInfo],
+      _program_id: &Pubkey,
+      phantom_wallet: [u8; 32],
     ) -> ProgramResult {
-        let account_info_iter = &mut accounts.iter();
-        let payer = next_account_info(account_info_iter)?;
+      let account_info_iter = &mut accounts.iter();
+      let user = next_account_info(account_info_iter)?;
 
-        let mut serialized_data = vec![];
-        data.serialize(&mut serialized_data)?;
+      // verileri oku
+      let mut user_data = User::try_from_slice(&user.data.borrow())?;
 
-        let rent = Rent::default();
-        let pr_count_rent = rent.minimum_balance(serialized_data.len());
+      // parametre geln phantom wallet adresi ile kullancinin adresi ayni mi?
+      if user_data.phantom_wallet != phantom_wallet {
+          msg!("No user found with the provided phantom wallet.");
+          return Err(ProgramError::InvalidArgument);
+      }
 
-        let (pr_counter_address, bump) =
-            Pubkey::find_program_address(&[b"pull request counter"], program_id);
+      let clock = Clock::get()?;
+      let current_time = clock.unix_timestamp as u64;
 
-        invoke_signed(
-            &system_instruction::create_account(
-                payer.key,
-                &pr_counter_address,
-                pr_count_rent,
-                serialized_data.len() as u64,
-                program_id,
-            ),
-            &[payer.clone()],
-            &[&[b"pull request counter", &[bump]]],
-        )?;
+      // 1 hafta 604800 saniye
+      let one_week_in_seconds = 604800;
 
-        Ok(())
-    }
+      // Eğer bir hafta geçmişse haftalik pr sayisini sifirlariz
+      if current_time - user_data.submitted_at >= one_week_in_seconds {
+          msg!("A week has passed since the last PR count reset. Resetting weekly PR count.");
+          user_data.total_pr_count = 0;
+          user_data.submitted_at = current_time;
+      }
+      
+      msg!(
+          "User: {}, Phantom Wallet: {:?}, Weekly PR Count: {}, Total Earnings: {}",
+          user_data.github_username,
+          user_data.phantom_wallet,
+          user_data.total_pr_count,
+          user_data.totalearn
+      );
+
+      user_data.serialize(&mut &mut user.try_borrow_mut_data()?[..])?;
+
+      Ok(())
+  }
 
     // yeni repo olustur
     pub fn create_repo(
@@ -342,49 +386,6 @@ impl Processor {
 
         let mut pr_count_data_account = pr_count.try_borrow_mut_data()?;
         pr_count_data.serialize(&mut &mut pr_count_data_account[..])?;
-
-        Ok(())
-    }
-
-    // parametre gelen publickey varsa getir
-    pub fn get_user(
-        accounts: &[AccountInfo],
-        _program_id: &Pubkey,
-        phantom_wallet: [u8; 32],
-    ) -> ProgramResult {
-        let account_info_iter = &mut accounts.iter();
-        let user = next_account_info(account_info_iter)?;
-
-        // verileri oku
-        let mut user_data = User::try_from_slice(&user.data.borrow())?;
-
-        // parametre geln phantom wallet adresi ile kullancinin adresi ayni mi?
-        if user_data.phantom_wallet != phantom_wallet {
-            msg!("No user found with the provided phantom wallet.");
-            return Err(ProgramError::InvalidArgument);
-        }
-
-        let clock = Clock::get()?;
-        let current_time = clock.unix_timestamp as u64;
-
-        // 1 hafta 604800 saniye
-        let one_week_in_seconds = 604800;
-
-        // Eğer bir hafta geçmişse haftalik pr sayisini sifirlariz
-        if current_time - user_data.submitted_at >= one_week_in_seconds {
-            msg!("A week has passed since the last PR count reset. Resetting weekly PR count.");
-            user_data.total_pr_count = 0;
-            user_data.submitted_at = current_time;
-        }
-        msg!(
-            "User: {}, Phantom Wallet: {:?}, Weekly PR Count: {}, Total Earnings: {}",
-            user_data.github_username,
-            user_data.phantom_wallet,
-            user_data.total_pr_count,
-            user_data.totalearn
-        );
-
-        user_data.serialize(&mut &mut user.try_borrow_mut_data()?[..])?;
 
         Ok(())
     }
