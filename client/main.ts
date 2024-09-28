@@ -12,7 +12,7 @@ import {
 
 } from "@solana/web3.js";
 import { deserialize, deserializeUnchecked, serialize } from "borsh";
-import { User, UserShema, GithubRepo, GithubRepoShema, PrCount, PrCountShema } from "./models";
+import { User, UserShema, GithubRepo, GithubRepoShema, PrCount, PrCountShema, UserForCreate, UserForCreateShema } from "./models";
 const connection = new Connection("https://api.devnet.solana.com", "confirmed");
 
 const privatekey = [255, 198, 26, 124, 50, 247, 86, 155, 237, 155, 233, 203, 4, 75, 223, 162, 218, 242, 132, 212, 91, 59, 71, 20, 139, 120, 96, 231, 206, 190, 27, 226, 85, 199, 71, 164, 51, 152, 9, 42, 4, 163, 229, 116, 27, 107, 216, 117, 245, 194, 60, 57, 158, 221, 79, 221, 47, 130, 60, 9, 175, 141, 162, 150]
@@ -92,14 +92,12 @@ const pull_request_count = async () => {
 }
 
 const create_user = async (github_username: string, phantom_wallet: Uint8Array) => {
-  const user = new User();
-  user.github_username = github_username.toString();
-  user.phantom_wallet = phantom_wallet;
-  user.totalearn = BigInt(0);
-  user.submitted_at = BigInt(0);
-  user.total_pr_count = BigInt(0);
 
-  const encoded = serialize(UserShema, user);
+  const userCreate = new UserForCreate();
+  userCreate.github_username = github_username;
+  userCreate.phantom_wallet = phantom_wallet;
+
+  const encoded = serialize(UserForCreateShema, userCreate);
   const concat = Uint8Array.of(1, ...encoded);
 
   const userPDA = PublicKey.findProgramAddressSync([Buffer.from("user_pda"), Buffer.from(phantom_wallet)], program_id);
@@ -128,7 +126,6 @@ const create_user = async (github_username: string, phantom_wallet: Uint8Array) 
 
   connection.sendTransaction(tx);
   console.log("New users account => " + userPDA[0])
-
 }
 
 const getUser = async (phantomWallet: Uint8Array): Promise<string> => {
@@ -143,18 +140,21 @@ const getUser = async (phantomWallet: Uint8Array): Promise<string> => {
   return user_deserialized.github_username.toString();
 }
 
-(async () => {
-  try {
-    const pubkey = new PublicKey("BUBtN9W8Ypt7S1w5otZVM7cU8HTgM7M2CjTt4z1L1Net");
-    const userName = "bgraokmsuh";
-    const createUser = await create_user(userName, pubkey.toBytes());
+// (async () => {
+//   try {
+//     const pubkey = new PublicKey("BUBtN9W8Ypt7S1w5otZVM7cU8HTgM7M2CjTt4z1L1Net");
+//     const userName = "bgraokmsuh";
+//     const createUser = await create_user(userName, pubkey.toBytes());
 
-    console.log(createUser);
-  } catch (error) {
-    console.log(error);
+//     console.log(createUser);
+//   } catch (error) {
+//     console.log(error);
 
-  }
+//   }
 
-  // const user = await getUser(pubkey.toBytes());
-  // console.log(user);
-})();
+//   // const user = await getUser(pubkey.toBytes());
+//   // console.log(user);
+// })();
+
+const pubkey = new PublicKey("BUBtN9W8Ypt7S1w5otZVM7cU8HTgM7M2CjTt4z1L1Net");
+create_user("bgraokmsuh", pubkey.toBytes());

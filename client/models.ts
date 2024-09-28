@@ -1,6 +1,6 @@
 import { serialize, deserialize, Schema } from "borsh";
 
-export class User { 
+export class User {
   github_username: string = "";
   phantom_wallet: Uint8Array = new Uint8Array(32);
   totalearn: bigint = BigInt(0);
@@ -8,7 +8,7 @@ export class User {
   total_pr_count: bigint = BigInt(0);
 
 
-  constructor(fields: { github_username:string; phantom_wallet:Uint8Array; totalearn:bigint; submitted_at:bigint; total_pr_count:bigint;} | undefined = undefined) {
+  constructor(fields: { github_username: string; phantom_wallet: Uint8Array; totalearn: bigint; submitted_at: bigint; total_pr_count: bigint; } | undefined = undefined) {
     if (fields) {
       this.github_username = fields.github_username;
       this.phantom_wallet = fields.phantom_wallet;
@@ -24,7 +24,7 @@ export const UserShema = new Map([
     kind: "struct",
     fields: [
       ["github_username", "String"],
-      ["phantom_wallet", ["u8",32]],
+      ["phantom_wallet", ["u8", 32]],
       ["totalearn", "u64"],
       ["submitted_at", "u64"],
       ["total_pr_count", "u64"],
@@ -33,7 +33,33 @@ export const UserShema = new Map([
 ]);
 
 
-export class GithubRepo { 
+
+export class UserForCreate {
+  github_username: string = "";
+  phantom_wallet: Uint8Array = new Uint8Array(32);
+
+
+
+  constructor(fields: { github_username: string; phantom_wallet: Uint8Array; } | undefined = undefined) {
+    if (fields) {
+      this.github_username = fields.github_username;
+      this.phantom_wallet = fields.phantom_wallet;
+    }
+  }
+}
+
+export const UserForCreateShema = new Map([
+  [UserForCreate, {
+    kind: "struct",
+    fields: [
+      ["github_username", "String"],
+      ["phantom_wallet", ["u8", 32]],
+    ]
+  }]
+]);
+
+
+export class GithubRepo {
   repo_url: string = "";
   repo_name: string = "";
   repo_description: string = "";
@@ -44,7 +70,7 @@ export class GithubRepo {
   created_at: bigint = BigInt(0);
 
 
-  constructor(fields: { repo_url: string; repo_name: string; repo_description: string; total_pull_requests:bigint; pull_request_limit:bigint; reward_per_pull_request:bigint; owner_wallet_address:Uint8Array ;created_at:bigint;} | undefined = undefined) {
+  constructor(fields: { repo_url: string; repo_name: string; repo_description: string; total_pull_requests: bigint; pull_request_limit: bigint; reward_per_pull_request: bigint; owner_wallet_address: Uint8Array; created_at: bigint; } | undefined = undefined) {
     if (fields) {
       this.repo_url = fields.repo_url;
       this.repo_name = fields.repo_name;
@@ -68,7 +94,7 @@ export const GithubRepoShema = new Map([
       ["total_pull_requests", "u64"],
       ["pull_request_limit", "u64"],
       ["reward_per_pull_request", "u64"],
-      ["owner_wallet_address", ["u8",32]],
+      ["owner_wallet_address", ["u8", 32]],
       ["created_at", "u64"],
     ]
   }]
@@ -76,10 +102,10 @@ export const GithubRepoShema = new Map([
 
 
 
-export class PrCount { 
+export class PrCount {
   prcount: bigint = BigInt(0);
 
-  constructor(fields: { prcount: bigint;} | undefined = undefined) {
+  constructor(fields: { prcount: bigint; } | undefined = undefined) {
     if (fields) {
       this.prcount = fields.prcount;
 
