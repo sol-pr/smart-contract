@@ -42,7 +42,7 @@ impl Processor {
                 github_username,
                 phantom_wallet,
             } => Self::create_user(accounts, _program_id, github_username, phantom_wallet),
-          
+
             RNGProgramInstruction::GetUser { phantom_wallet } => {
                 Self::get_user(accounts, _program_id, phantom_wallet)
             }
@@ -58,16 +58,15 @@ impl Processor {
             RNGProgramInstruction::GetRepoUrl { repo_url } => {
                 Self::get_repo_url(accounts, _program_id, repo_url)
             }
-    
+
             RNGProgramInstruction::Transfer => Self::transfer_reward(accounts, _program_id),
-            
+
             RNGProgramInstruction::GetPRepo => {
                 Self::get_pull_requests_per_repo(accounts, _program_id)
             }
         }
     }
 
-   
     // Kullanicinin yaptigi toplam pr sayisini sayan sayac
     pub fn total_pull_request_count(
         accounts: &[AccountInfo],
@@ -291,133 +290,95 @@ impl Processor {
 
     // yeni repo olustur
     pub fn create_repo(
-    accounts: &[AccountInfo],
-    program_id: &Pubkey,
-    data: GithubRepo,
+        accounts: &[AccountInfo],
+        program_id: &Pubkey,
+        data: GithubRepo,
     ) -> ProgramResult {
-    let account_info_iter = &mut accounts.iter();
-    let payer = next_account_info(account_info_iter)?;
-    let github_repo_account = next_account_info(account_info_iter)?;
+        let account_info_iter = &mut accounts.iter();
+        let payer = next_account_info(account_info_iter)?;
+        let github_repo_account = next_account_info(account_info_iter)?;
 
-    // Payer'ın imzacı mi
-    if !payer.is_signer {
-        msg!("Payer is not a signer");
-        return Err(ProgramError::MissingRequiredSignature);
+        // Payer'ın imzacı mi
+        if !payer.is_signer {
+            msg!("Payer is not a signer");
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+
+        // Github repo account'un yazılabilir olduğundan emin ol
+        if !github_repo_account.is_writable {
+            msg!("GitHub repo account is not writable");
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        // PDA oluşturuluyor
+        let (repo_pda_address, bump) =
+            Pubkey::find_program_address(&[b"repo_pda", data.repo_url.as_bytes()], program_id);
+
+        // Veri yapılandırması (GitHub repo verisi)
+        let repo_info = GithubRepo {
+            repo_url: data.repo_url.clone(),
+            repo_name: data.repo_name.clone(),
+            repo_description: data.repo_description.clone(),
+            total_pull_requests: 0,
+            pull_request_limit: data.pull_request_limit,
+            reward_per_pull_request: data.reward_per_pull_request,
+            owner_wallet_address: data.owner_wallet_address,
+        };
+
+        // Serialize etmeden önce veriyi byte dizisine dönüştür
+        let mut serialized_data = vec![];
+        repo_info.serialize(&mut serialized_data)?;
+
+        let rent = Rent::get()?;
+        let repo_rent = rent.minimum_balance(serialized_data.len());
+
+        invoke_signed(
+            &system_instruction::create_account(
+                payer.key,
+                &repo_pda_address,
+                repo_rent,
+                serialized_data.len() as u64,
+                program_id,
+            ),
+            &[github_repo_account.clone(), payer.clone()],
+            &[&[b"repo_pda", data.repo_url.as_bytes(), &[bump]]],
+        )?;
+
+        // Veriyi hesaba yazmadan önce alanın yeterli olup olmadığını kontrol et
+        let github_repo_data_len = github_repo_account.try_data_len()?;
+        if github_repo_data_len < serialized_data.len() {
+            return Err(ProgramError::AccountDataTooSmall);
+        }
+
+        // Veriyi GitHub repo account'una yaz
+        repo_info.serialize(&mut &mut github_repo_account.try_borrow_mut_data()?[..])?;
+
+        Ok(())
     }
 
-    // Github repo account'un yazılabilir olduğundan emin ol
-    if !github_repo_account.is_writable {
-        msg!("GitHub repo account is not writable");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // PDA oluşturuluyor
-    let (repo_pda_address, bump) =
-        Pubkey::find_program_address(&[b"repo_pda", data.repo_url.as_bytes()], program_id);
-
-    // Veri yapılandırması (GitHub repo verisi)
-    let repo_info = GithubRepo {
-        repo_url: data.repo_url.clone(),
-        repo_name: data.repo_name.clone(),
-        repo_description: data.repo_description.clone(),
-        total_pull_requests: 0,
-        pull_request_limit: data.pull_request_limit,
-        reward_per_pull_request: data.reward_per_pull_request,
-        owner_wallet_address: data.owner_wallet_address,
-    };
-
-    // Serialize etmeden önce veriyi byte dizisine dönüştür
-    let mut serialized_data = vec![];
-    repo_info.serialize(&mut serialized_data)?;
-
-    let rent = Rent::get()?;
-    let repo_rent = rent.minimum_balance(serialized_data.len());
-
-    invoke_signed(
-        &system_instruction::create_account(
-            payer.key,
-            &repo_pda_address,
-            repo_rent,
-            serialized_data.len() as u64,
-            program_id,
-        ),
-        &[github_repo_account.clone(), payer.clone()],
-        &[&[b"repo_pda", data.repo_url.as_bytes(), &[bump]]],
-    )?;
-
-    // Veriyi hesaba yazmadan önce alanın yeterli olup olmadığını kontrol et
-    let github_repo_data_len = github_repo_account.try_data_len()?;
-    if github_repo_data_len < serialized_data.len() {
-        return Err(ProgramError::AccountDataTooSmall);
-    }
-
-    // Veriyi GitHub repo account'una yaz
-    repo_info.serialize(&mut &mut github_repo_account.try_borrow_mut_data()?[..])?;
-
-    Ok(())
-    }
-
-   // halihazirda olan repolari goruntule
+    // halihazirda olan repolari goruntule
     pub fn get_repos(
-    accounts: &[AccountInfo],
-    program_id: &Pubkey,
-    data: GithubRepo
+        accounts: &[AccountInfo],
+        program_id: &Pubkey,
+        data: GithubRepo,
     ) -> ProgramResult {
-    let account_info_iter = &mut accounts.iter();
-    let github_repo_account = next_account_info(account_info_iter)?;
+        let account_info_iter = &mut accounts.iter();
+        let github_repo_account = next_account_info(account_info_iter)?;
 
-    // Hesap verisini deserialize edin
-    let repo_data = GithubRepo::try_from_slice(&github_repo_account.data.borrow())?;
+        // Hesap verisini deserialize edin
+        let repo_data = GithubRepo::try_from_slice(&github_repo_account.data.borrow())?;
 
-    // PDA adresini kontrol et
-    let (repo_pda_address, bump) =
-        Pubkey::find_program_address(&[b"repo_pda", data.repo_url.as_bytes()], program_id);
+        // PDA adresini kontrol et
+        let (repo_pda_address, bump) =
+            Pubkey::find_program_address(&[b"repo_pda", data.repo_url.as_bytes()], program_id);
 
-    if repo_pda_address != *github_repo_account.key {
-        msg!("Provided public key does not match the derived PDA.");
-        return Err(ProgramError::InvalidArgument);
-    }
+        if repo_pda_address != *github_repo_account.key {
+            msg!("Provided public key does not match the derived PDA.");
+            return Err(ProgramError::InvalidArgument);
+        }
 
-    // Repo bilgilerini mesaj olarak görüntüle
-    msg!(
-        "Github Repo Name: {}, Github Repo Url: {}, Github Repo Description: {}, Total Pull Requests: {}, 
-        Pull Request Limit: {}, Reward Per Pull Request: {}, Owner Wallet Address: {:?}",
-        repo_data.repo_name,
-        repo_data.repo_url,
-        repo_data.repo_description,
-        repo_data.total_pull_requests,
-        repo_data.pull_request_limit,
-        repo_data.reward_per_pull_request,
-        repo_data.owner_wallet_address,
-    );
-
-    Ok(())
-    }
-
-  // repo url'e gore repoyu getir
-    pub fn get_repo_url(
-    accounts: &[AccountInfo],
-    program_id: &Pubkey,
-    repo_url: String, 
-    ) -> ProgramResult {
-    let account_info_iter = &mut accounts.iter();
-    let github_repo_account = next_account_info(account_info_iter)?;
-
-    
-    let repo_data = GithubRepo::try_from_slice(&github_repo_account.data.borrow())?;
-
-    let (repo_pda_address, _bump) =
-        Pubkey::find_program_address(&[b"repo_pda", repo_url.as_bytes()], program_id);
-
-    if repo_pda_address != *github_repo_account.key {
+        // Repo bilgilerini mesaj olarak görüntüle
         msg!(
-            "Provided public key ({:?}) does not match the derived PDA ({:?}).",
-            github_repo_account.key, repo_pda_address
-        );
-        return Err(ProgramError::InvalidArgument);
-    }
-
-    msg!(
         "Github Repo Name: {}, Github Repo Url: {}, Github Repo Description: {}, Total Pull Requests: {}, 
         Pull Request Limit: {}, Reward Per Pull Request: {}, Owner Wallet Address: {:?}",
         repo_data.repo_name,
@@ -429,7 +390,49 @@ impl Processor {
         repo_data.owner_wallet_address,
     );
 
-    Ok(())
+        repo_data.serialize(&mut &mut github_repo_account.try_borrow_mut_data()?[..])?;
+
+        Ok(())
+    }
+
+    // repo url'e gore repoyu getir
+    pub fn get_repo_url(
+        accounts: &[AccountInfo],
+        program_id: &Pubkey,
+        repo_url: String,
+    ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let github_repo_account = next_account_info(account_info_iter)?;
+
+        let repo_data = GithubRepo::try_from_slice(&github_repo_account.data.borrow())?;
+
+        let (repo_pda_address, _bump) =
+            Pubkey::find_program_address(&[b"repo_pda", repo_url.as_bytes()], program_id);
+
+        if repo_pda_address != *github_repo_account.key {
+            msg!(
+                "Provided public key ({:?}) does not match the derived PDA ({:?}).",
+                github_repo_account.key,
+                repo_pda_address
+            );
+            return Err(ProgramError::InvalidArgument);
+        }
+
+        msg!(
+        "Github Repo Name: {}, Github Repo Url: {}, Github Repo Description: {}, Total Pull Requests: {}, 
+        Pull Request Limit: {}, Reward Per Pull Request: {}, Owner Wallet Address: {:?}",
+        repo_data.repo_name,
+        repo_data.repo_url,
+        repo_data.repo_description,
+        repo_data.total_pull_requests,
+        repo_data.pull_request_limit,
+        repo_data.reward_per_pull_request,
+        repo_data.owner_wallet_address,
+    );
+
+        repo_data.serialize(&mut &mut github_repo_account.try_borrow_mut_data()?[..])?;
+
+        Ok(())
     }
 
     // odul transfer fonks
@@ -528,4 +531,3 @@ impl Processor {
         Ok(())
     }
 }
-
