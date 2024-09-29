@@ -15,11 +15,11 @@ import { deserialize, deserializeUnchecked, serialize } from "borsh";
 import { User, UserShema, GithubRepo, GithubRepoShema, PrCount, PrCountShema, UserForCreate, UserForCreateShema } from "./models";
 const connection = new Connection("https://api.devnet.solana.com", "confirmed");
 
-const privatekey = [255, 198, 26, 124, 50, 247, 86, 155, 237, 155, 233, 203, 4, 75, 223, 162, 218, 242, 132, 212, 91, 59, 71, 20, 139, 120, 96, 231, 206, 190, 27, 226, 85, 199, 71, 164, 51, 152, 9, 42, 4, 163, 229, 116, 27, 107, 216, 117, 245, 194, 60, 57, 158, 221, 79, 221, 47, 130, 60, 9, 175, 141, 162, 150]
+const privatekey =[96,105,112,230,111,23,182,37,224,241,51,108,76,156,240,180,3,209,232,107,148,38,252,171,79,6,53,220,154,195,76,79,29,243,93,105,64,148,53,217,112,192,90,18,120,45,250,253,196,5,196,123,226,88,239,5,225,17,12,23,143,232,58,107]
 const payer = Keypair.fromSecretKey(Uint8Array.from(privatekey));
 
 const program_id = new PublicKey("9ZAjGgwqtHQtjM6E1V31bHGZQqkvBHVbbEmmEgVU7fkC");
-// const pr_count = new PublicKey("");
+// const user = new PublicKey("Cqt5XDcKL3uw1ozwdFsretbGGHpDvsNLaYYhZgXXDCGZ");
 
 
 const total_pull_request_count = async () => {
@@ -140,21 +140,22 @@ const getUser = async (phantomWallet: Uint8Array): Promise<string> => {
   return user_deserialized.github_username.toString();
 }
 
-// (async () => {
-//   try {
-//     const pubkey = new PublicKey("BUBtN9W8Ypt7S1w5otZVM7cU8HTgM7M2CjTt4z1L1Net");
-//     const userName = "bgraokmsuh";
-//     const createUser = await create_user(userName, pubkey.toBytes());
+(async () => {
+  // try {
+    const pubkey = new PublicKey("BUBtN9W8Ypt7S1w5otZVM7cU8HTgM7M2CjTt4z1L1Net");
+    const userName = "bgraokmsuh";
+  //   const createUser = await create_user(userName, pubkey.toBytes());
 
-//     console.log(createUser);
-//   } catch (error) {
-//     console.log(error);
+  //   console.log(createUser);
+  // } catch (error) {
+  //   console.log(error);
 
-//   }
+  // }
 
-//   // const user = await getUser(pubkey.toBytes());
-//   // console.log(user);
-// })();
+  const user = await getUser(pubkey.toBytes());
+  console.log(user);
+})();
 
 const pubkey = new PublicKey("BUBtN9W8Ypt7S1w5otZVM7cU8HTgM7M2CjTt4z1L1Net");
-create_user("bgraokmsuh", pubkey.toBytes());
+// create_user("bgraokmsuh", pubkey.toBytes());
+
