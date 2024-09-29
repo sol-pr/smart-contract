@@ -15,10 +15,10 @@ import { deserialize, deserializeUnchecked, serialize } from "borsh";
 import { User, UserShema, GithubRepo, GithubRepoShema, PrCount, PrCountShema, UserForCreate, UserForCreateShema } from "./models";
 const connection = new Connection("https://api.devnet.solana.com", "confirmed");
 
-const privatekey =[96,105,112,230,111,23,182,37,224,241,51,108,76,156,240,180,3,209,232,107,148,38,252,171,79,6,53,220,154,195,76,79,29,243,93,105,64,148,53,217,112,192,90,18,120,45,250,253,196,5,196,123,226,88,239,5,225,17,12,23,143,232,58,107]
+const privatekey = [96, 105, 112, 230, 111, 23, 182, 37, 224, 241, 51, 108, 76, 156, 240, 180, 3, 209, 232, 107, 148, 38, 252, 171, 79, 6, 53, 220, 154, 195, 76, 79, 29, 243, 93, 105, 64, 148, 53, 217, 112, 192, 90, 18, 120, 45, 250, 253, 196, 5, 196, 123, 226, 88, 239, 5, 225, 17, 12, 23, 143, 232, 58, 107]
 const payer = Keypair.fromSecretKey(Uint8Array.from(privatekey));
 
-const program_id = new PublicKey("9ZAjGgwqtHQtjM6E1V31bHGZQqkvBHVbbEmmEgVU7fkC");
+const program_id = new PublicKey("FEu3sURKJ32B1KpcdqkesAfznP8P4tZW3WUh3icaSKsf");
 // const user = new PublicKey("Cqt5XDcKL3uw1ozwdFsretbGGHpDvsNLaYYhZgXXDCGZ");
 
 
@@ -62,7 +62,7 @@ const pull_request_count = async () => {
   pr_count.prcount = BigInt(0);
 
   const encoded = serialize(UserShema, pr_count);
-  const concat = Uint8Array.of(3, ...encoded);
+  const concat = Uint8Array.of(1, ...encoded);
 
   const prCountPDA = PublicKey.findProgramAddressSync([Buffer.from("pull request counter")], program_id)
 
@@ -98,7 +98,7 @@ const create_user = async (github_username: string, phantom_wallet: Uint8Array) 
   userCreate.phantom_wallet = phantom_wallet;
 
   const encoded = serialize(UserForCreateShema, userCreate);
-  const concat = Uint8Array.of(1, ...encoded);
+  const concat = Uint8Array.of(2, ...encoded);
 
   const userPDA = PublicKey.findProgramAddressSync([Buffer.from("user_pda"), Buffer.from(phantom_wallet)], program_id);
 
@@ -140,22 +140,93 @@ const getUser = async (phantomWallet: Uint8Array): Promise<string> => {
   return user_deserialized.github_username.toString();
 }
 
+
+const create_repo = async (repo: GithubRepo) => {
+  const createRepo = new GithubRepo();
+  createRepo.repo_url = repo.repo_url;
+  createRepo.repo_name = repo.repo_name;
+  createRepo.repo_description = repo.repo_description;
+  createRepo.total_pull_requests = BigInt(0);
+  createRepo.pull_request_limit = repo.pull_request_limit;
+  createRepo.reward_per_pull_request = repo.reward_per_pull_request;
+  createRepo.owner_wallet_address = repo.owner_wallet_address;
+
+  const encoded = serialize(GithubRepoShema, createRepo);
+  const concat = Uint8Array.of(4, ...encoded);
+
+  const repoPDA = PublicKey.findProgramAddressSync([Buffer.from("repo_pda"), Buffer.from(repo.repo_url)], program_id);
+
+  const instruction = new TransactionInstruction({
+    keys: [
+      { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+      { pubkey: repoPDA[0], isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+
+    ],
+    data: Buffer.from(concat),
+    programId: program_id
+  });
+
+  const message = new TransactionMessage({
+    instructions: [instruction],
+    payerKey: payer.publicKey,
+    recentBlockhash: (await connection.getLatestBlockhash()).blockhash
+  }).compileToV0Message();
+
+
+  const tx = new VersionedTransaction(message);
+  tx.sign([payer]);
+
+  connection.sendTransaction(tx);
+  console.log("New Repository account => " + repoPDA[0])
+
+}
+
+const getRepo = async (repo_url: string): Promise<GithubRepo> => {
+  const publicKey = PublicKey.findProgramAddressSync([Buffer.from("repo_pda"), Buffer.from(repo_url)], program_id);
+  const repo_read = await connection.getAccountInfo(publicKey[0]);
+
+  if (repo_read == null) {
+    return new GithubRepo();
+  }
+  const repo_deserialized = deserialize(GithubRepoShema, GithubRepo, repo_read.data);
+  return repo_deserialized;
+}
+
 (async () => {
   // try {
-    const pubkey = new PublicKey("BUBtN9W8Ypt7S1w5otZVM7cU8HTgM7M2CjTt4z1L1Net");
-    const userName = "bgraokmsuh";
-  //   const createUser = await create_user(userName, pubkey.toBytes());
+  const pubkey = new PublicKey("BUBtN9W8Ypt7S1w5otZVM7cU8HTgM7M2CjTt4z1L1Net");
+  const userName = "bgraokmsuh";
+  // const createUser = await create_user(userName, pubkey.toBytes());
 
-  //   console.log(createUser);
+  // console.log(createUser);
   // } catch (error) {
   //   console.log(error);
 
   // }
 
-  const user = await getUser(pubkey.toBytes());
-  console.log(user);
-})();
+  // const user = await getUser(pubkey.toBytes());
+  // console.log(user);
 
-const pubkey = new PublicKey("BUBtN9W8Ypt7S1w5otZVM7cU8HTgM7M2CjTt4z1L1Net");
-// create_user("bgraokmsuh", pubkey.toBytes());
+  //create repo
+
+  // const repo = new GithubRepo();
+  // repo.repo_url = "https:gitub.com/solana";
+  // repo.repo_name = "solana";
+  // repo.repo_description = "solana repo";
+  // repo.pull_request_limit = BigInt(5);
+  // repo.reward_per_pull_request = BigInt(1);
+  // repo.total_pull_requests = BigInt(0);
+  // repo.owner_wallet_address = pubkey.toBytes();
+
+  // const response = await create_repo(repo);
+
+  // console.log(response);
+
+  const repo = await getRepo("https:gitub.com/solana");
+
+  console.log(repo);
+
+
+})();
 
