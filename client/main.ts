@@ -184,8 +184,8 @@ const create_repo = async (repo: GithubRepo) => {
 
 }
 
-const getRepo = async (repo_url: string): Promise<GithubRepo> => {
-  const publicKey = PublicKey.findProgramAddressSync([Buffer.from("repo_pda"), Buffer.from(repo_url)], program_id);
+const getRepo = async (id: string): Promise<GithubRepo> => {
+  const publicKey = PublicKey.findProgramAddressSync([Buffer.from("repo_pda"), Buffer.from(id)], program_id);
   const repo_read = await connection.getAccountInfo(publicKey[0]);
 
   if (repo_read == null) {
@@ -195,20 +195,46 @@ const getRepo = async (repo_url: string): Promise<GithubRepo> => {
   return repo_deserialized;
 }
 
+
+const getAllRepos = async () => {
+  const accounts = await connection.getProgramAccounts(program_id);
+
+  const githubRepos: GithubRepo[] = [];
+
+  for (let account of accounts) {
+    // Repo PDA adresini ve veriyi kontrol etmek için deserialize et
+    try {
+      const repoData = deserialize(
+        GithubRepoShema,
+        GithubRepo,
+        account.account.data
+      );
+
+      githubRepos.push(repoData);
+    } catch (err) {
+      console.error('Error deserializing repo data:', err);
+    }
+  }
+
+  console.log("All repos:", githubRepos);
+  return githubRepos;
+}
+
+
 (async () => {
   //  try {
-  const pubkey = new PublicKey("C6nfQf35zJZ4mw1kCGYSSm9NjhyQi9K74fLGnhZqTpPJ");
-  const userName: string = "sol-pr";
-  //const createUser = await create_user(userName, pubkey.toBytes());
+  // const pubkey = new PublicKey("C6nfQf35zJZ4mw1kCGYSSm9NjhyQi9K74fLGnhZqTpPJ");
+  // const userName: string = "sol-pr";
+  // //const createUser = await create_user(userName, pubkey.toBytes());
 
-  //   console.log(createUser);
-  // } catch (error) {
-  //   console.log(error);
+  // //   console.log(createUser);
+  // // } catch (error) {
+  // //   console.log(error);
 
-  //}
+  // //}
 
-  const user = await getUser(pubkey.toBytes());
-  console.log(user);
+  // const user = await getUser(pubkey.toBytes());
+  // console.log(user);
 
   //create repo
 
@@ -229,6 +255,10 @@ const getRepo = async (repo_url: string): Promise<GithubRepo> => {
 
   // console.log(repo);
 
+
+  const allRepos = await getAllRepos();
+
+  console.log(allRepos);
 
 })();
 

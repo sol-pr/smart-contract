@@ -51,8 +51,9 @@ impl Processor {
                 Self::create_repo(accounts, _program_id, GithubRepo)
             }
 
-            RNGProgramInstruction::GetRepo { GithubRepo } => {
-                Self::get_repos(accounts, _program_id, GithubRepo)
+            RNGProgramInstruction::GetRepo => {
+                let program_id = &_program_id; // Referansı alın
+                Self::get_all_repos(accounts, program_id) // Uygun şekilde fonksiyonu çağırın
             }
 
             RNGProgramInstruction::GetRepoUrl { id } => {
@@ -357,41 +358,46 @@ impl Processor {
         Ok(())
     }
 
-    // halihazirda olan repolari goruntule
-    pub fn get_repos(
-        accounts: &[AccountInfo],
-        program_id: &Pubkey,
-        data: GithubRepo,
-    ) -> ProgramResult {
+    pub fn get_all_repos(accounts: &[AccountInfo], program_id: &Pubkey) -> ProgramResult {
+        let mut github_repos: Vec<GithubRepo> = Vec::new();
         let account_info_iter = &mut accounts.iter();
-        let github_repo_account = next_account_info(account_info_iter)?;
 
-        // Hesap verisini deserialize edin
-        let repo_data = GithubRepo::try_from_slice(&github_repo_account.data.borrow())?;
+        // Tüm hesapları dolaşarak GitHubRepo verilerini topluyoruz
+        for account_info in account_info_iter {
+            // PDA adresi olup olmadığını kontrol et
+            if account_info.owner != program_id {
+                msg!("Account does not belong to this program");
+                continue;
+            }
 
-        // PDA adresini kontrol et
-        let (repo_pda_address, bump) =
-            Pubkey::find_program_address(&[b"repo_pda", data.id.as_bytes()], program_id);
+            // PDA adresini doğrulamak için yeniden hesapla
+            let (expected_pda, _bump) = Pubkey::find_program_address(&[b"repo_pda"], program_id);
+            if *account_info.key != expected_pda {
+                msg!("Account is not the expected repo PDA");
+                continue;
+            }
 
-        if repo_pda_address != *github_repo_account.key {
-            msg!("Provided public key does not match the derived PDA.");
-            return Err(ProgramError::InvalidArgument);
+            // Hesaptan gelen veri boyutunu alalım
+            let data_len = account_info.try_data_len()?;
+
+            // Eğer veri varsa, deserialize edip listemize ekleyelim
+            if data_len > 0 {
+                let repo_info = GithubRepo::try_from_slice(&account_info.try_borrow_data()?)?;
+                github_repos.push(repo_info);
+            }
         }
 
-        // Repo bilgilerini mesaj olarak görüntüle
-        msg!(
-        "Github Repo Name: {}, Github Repo Url: {}, Github Repo Description: {}, Total Pull Requests: {}, 
-        Pull Request Limit: {}, Reward Per Pull Request: {}, Owner Wallet Address: {:?}",
-        repo_data.repo_name,
-        repo_data.repo_url,
-        repo_data.repo_description,
-        repo_data.total_pull_requests,
-        repo_data.pull_request_limit,
-        repo_data.reward_per_pull_request,
-        repo_data.owner_wallet_address,
-    );
+        // Tüm repoları serialize et
+        let mut serialized_repos: Vec<u8> = Vec::new();
+        github_repos
+            .serialize(&mut serialized_repos)
+            .map_err(|err| {
+                msg!("Error serializing repo data: {:?}", err);
+                ProgramError::InvalidAccountData
+            })?;
 
-        repo_data.serialize(&mut &mut github_repo_account.try_borrow_mut_data()?[..])?;
+        // Serialize edilen veriyi client'a gönder
+        msg!("Serialized all Github repos: {:?}", serialized_repos);
 
         Ok(())
     }
