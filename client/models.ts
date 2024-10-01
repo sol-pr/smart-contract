@@ -60,6 +60,7 @@ export const UserForCreateShema = new Map([
 
 
 export class GithubRepo {
+  id: string = "";
   repo_url: string = "";
   repo_name: string = "";
   repo_description: string = "";
@@ -69,8 +70,9 @@ export class GithubRepo {
   owner_wallet_address: Uint8Array = new Uint8Array(32);
 
 
-  constructor(fields: { repo_url: string; repo_name: string; repo_description: string; total_pull_requests: bigint; pull_request_limit: bigint; reward_per_pull_request: bigint; owner_wallet_address: Uint8Array;} | undefined = undefined) {
+  constructor(fields: { id: string; repo_url: string; repo_name: string; repo_description: string; total_pull_requests: bigint; pull_request_limit: bigint; reward_per_pull_request: bigint; owner_wallet_address: Uint8Array; } | undefined = undefined) {
     if (fields) {
+      this.id = fields.id;
       this.repo_url = fields.repo_url;
       this.repo_name = fields.repo_name;
       this.repo_description = fields.repo_description;
@@ -86,6 +88,7 @@ export const GithubRepoShema = new Map([
   [GithubRepo, {
     kind: "struct",
     fields: [
+      ["id", "String"],
       ["repo_url", "String"],
       ["repo_name", "String"],
       ["repo_description", "String"],

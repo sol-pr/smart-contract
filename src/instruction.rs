@@ -27,10 +27,10 @@ pub enum RNGProgramInstruction {
         GithubRepo: GithubRepo,
     },
     GetRepoUrl {
-        repo_url: String,
+        id: String,
     },
     Transfer,
-    
+
     GetPRepo,
 }
 
@@ -65,9 +65,7 @@ impl RNGProgramInstruction {
             },
             6 => {
                 let repo: GithubRepo = GithubRepo::try_from_slice(&rest)?;
-                Self::GetRepoUrl {
-                    repo_url: repo.repo_url,
-                }
+                Self::GetRepoUrl { id: repo.id }
             }
             7 => Self::Transfer,
             8 => Self::GetPRepo,

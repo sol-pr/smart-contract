@@ -55,8 +55,8 @@ impl Processor {
                 Self::get_repos(accounts, _program_id, GithubRepo)
             }
 
-            RNGProgramInstruction::GetRepoUrl { repo_url } => {
-                Self::get_repo_url(accounts, _program_id, repo_url)
+            RNGProgramInstruction::GetRepoUrl { id } => {
+                Self::get_repo_by_id(accounts, _program_id, id)
             }
 
             RNGProgramInstruction::Transfer => Self::transfer_reward(accounts, _program_id),
@@ -312,10 +312,11 @@ impl Processor {
 
         // PDA oluşturuluyor
         let (repo_pda_address, bump) =
-            Pubkey::find_program_address(&[b"repo_pda", data.repo_url.as_bytes()], program_id);
+            Pubkey::find_program_address(&[b"repo_pda", data.id.as_bytes()], program_id);
 
         // Veri yapılandırması (GitHub repo verisi)
         let repo_info = GithubRepo {
+            id: data.id.clone(),
             repo_url: data.repo_url.clone(),
             repo_name: data.repo_name.clone(),
             repo_description: data.repo_description.clone(),
@@ -341,7 +342,7 @@ impl Processor {
                 program_id,
             ),
             &[github_repo_account.clone(), payer.clone()],
-            &[&[b"repo_pda", data.repo_url.as_bytes(), &[bump]]],
+            &[&[b"repo_pda", data.id.as_bytes(), &[bump]]],
         )?;
 
         // Veriyi hesaba yazmadan önce alanın yeterli olup olmadığını kontrol et
@@ -370,7 +371,7 @@ impl Processor {
 
         // PDA adresini kontrol et
         let (repo_pda_address, bump) =
-            Pubkey::find_program_address(&[b"repo_pda", data.repo_url.as_bytes()], program_id);
+            Pubkey::find_program_address(&[b"repo_pda", data.id.as_bytes()], program_id);
 
         if repo_pda_address != *github_repo_account.key {
             msg!("Provided public key does not match the derived PDA.");
@@ -396,10 +397,10 @@ impl Processor {
     }
 
     // repo url'e gore repoyu getir
-    pub fn get_repo_url(
+    pub fn get_repo_by_id(
         accounts: &[AccountInfo],
         program_id: &Pubkey,
-        repo_url: String,
+        id: String,
     ) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
         let github_repo_account = next_account_info(account_info_iter)?;
@@ -407,7 +408,7 @@ impl Processor {
         let repo_data = GithubRepo::try_from_slice(&github_repo_account.data.borrow())?;
 
         let (repo_pda_address, _bump) =
-            Pubkey::find_program_address(&[b"repo_pda", repo_url.as_bytes()], program_id);
+            Pubkey::find_program_address(&[b"repo_pda", id.as_bytes()], program_id);
 
         if repo_pda_address != *github_repo_account.key {
             msg!(

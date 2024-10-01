@@ -137,6 +137,8 @@ const getUser = async (phantomWallet: Uint8Array): Promise<string> => {
     return "kullanici bulunamadi";
   }
   const user_deserialized = deserialize(UserShema, User, user_read.data);
+
+  console.log(user_deserialized);
   return user_deserialized.github_username.toString();
 }
 
@@ -194,19 +196,19 @@ const getRepo = async (repo_url: string): Promise<GithubRepo> => {
 }
 
 (async () => {
-  // try {
-  const pubkey = new PublicKey("BUBtN9W8Ypt7S1w5otZVM7cU8HTgM7M2CjTt4z1L1Net");
-  const userName = "bgraokmsuh";
-  // const createUser = await create_user(userName, pubkey.toBytes());
+  //  try {
+  const pubkey = new PublicKey("C6nfQf35zJZ4mw1kCGYSSm9NjhyQi9K74fLGnhZqTpPJ");
+  const userName: string = "sol-pr";
+  //const createUser = await create_user(userName, pubkey.toBytes());
 
-  // console.log(createUser);
+  //   console.log(createUser);
   // } catch (error) {
   //   console.log(error);
 
-  // }
+  //}
 
-  // const user = await getUser(pubkey.toBytes());
-  // console.log(user);
+  const user = await getUser(pubkey.toBytes());
+  console.log(user);
 
   //create repo
 
@@ -223,9 +225,9 @@ const getRepo = async (repo_url: string): Promise<GithubRepo> => {
 
   // console.log(response);
 
-  const repo = await getRepo("https:gitub.com/solana");
+  // const repo = await getRepo("https:gitub.com/solana");
 
-  console.log(repo);
+  // console.log(repo);
 
 
 })();
