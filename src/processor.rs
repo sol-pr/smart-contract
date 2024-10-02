@@ -63,7 +63,7 @@ impl Processor {
             RNGProgramInstruction::Transfer => Self::transfer_reward(accounts, _program_id),
 
             RNGProgramInstruction::GetPRepo => {
-                Self::get_pull_requests_per_repo(accounts, _program_id)
+                Self::get_pull_requests_per_user(accounts, _program_id)
             }
         }
     }
@@ -451,24 +451,40 @@ impl Processor {
         let pr_count = next_account_info(account_info_iter)?;
         let _total_pr_count = next_account_info(account_info_iter)?;
 
-        //Criteria chcek
         if !payer.is_signer {
             msg!("payer is not a signer");
             return Err(ProgramError::MissingRequiredSignature);
         }
-
+        
         let mut user_data = User::try_from_slice(&user.data.borrow())?;
         let mut repo_data = GithubRepo::try_from_slice(&github_repo_account.data.borrow())?;
         let mut pr_count_data = PrCount::try_from_slice(&pr_count.data.borrow())?;
 
-        let (transfer_pda_address, bump) = Pubkey::find_program_address(
-            &[
-                b"transfer",
-                user_data.github_username.as_bytes(),
-                repo_data.repo_url.as_bytes(),
+        // PDA'ların adreslerini hesaplama
+         let (pr_counter_address, _bump) = Pubkey::find_program_address(
+         &[
+        b"pull request counter",
+        user_data.github_username.as_ref(),
+        repo_data.repo_url.as_ref(),
             ],
-            program_id,
+                 program_id,
+            );
+
+        if pr_counter_address != *pr_count.key {
+         msg!("Invalid PR Count PDA");
+        return Err(ProgramError::InvalidAccountData);
+        }
+
+        let (repo_pda_address, _bump) = Pubkey::find_program_address(
+     &[b"repo_pda", repo_data.id.as_bytes()],
+        program_id,
         );
+
+        if repo_pda_address != *github_repo_account.key {
+         msg!("Invalid Repo PDA");
+            return Err(ProgramError::InvalidAccountData);
+        }
+
 
         // pr sayisi limitine ulasildi mi?
         if pr_count_data.prcount >= repo_data.pull_request_limit {
@@ -488,10 +504,17 @@ impl Processor {
                 .prcount
                 .checked_sub(repo_data.pull_request_limit)
                 .ok_or(ProgramError::InvalidAccountData)?;
-        }
 
-        // pr sayisini arttiralim
-        pr_count_data.prcount = pr_count_data
+             // Kullanıcının toplam kazancını güncelle
+            user_data.totalearn = user_data
+            .totalearn
+            .checked_add(transfer_amount)
+            .ok_or(ProgramError::InvalidAccountData)?;
+         }
+
+         
+            // pr sayisini arttiralim
+            pr_count_data.prcount = pr_count_data
             .prcount
             .checked_add(1)
             .ok_or(InvalidInstruction)?;
@@ -502,39 +525,78 @@ impl Processor {
             .checked_add(1)
             .ok_or(ProgramError::InvalidAccountData)?;
 
-        // toplam elde edolen kazanc
-        user_data.totalearn = user_data
-            .totalearn
-            .checked_add(repo_data.reward_per_pull_request)
-            .ok_or(InvalidInstruction)?;
-
         let mut pr_count_data_account = pr_count.try_borrow_mut_data()?;
         pr_count_data.serialize(&mut &mut pr_count_data_account[..])?;
 
+        let mut user_data_account = user.try_borrow_mut_data()?;
+        user_data.serialize(&mut &mut user_data_account[..])?;
+
         Ok(())
     }
 
-    // Hangi repo kac pull request
-    pub fn get_pull_requests_per_repo(
+    
+    // Kullanıcının birden fazla repo için PR sayılarını gösteren fonksiyon
+    pub fn get_pull_requests_per_user(
         accounts: &[AccountInfo],
-        _program_id: &Pubkey,
+        program_id: &Pubkey,
     ) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
         let user = next_account_info(account_info_iter)?;
-        let github_repo_account = next_account_info(account_info_iter)?;
-        let pr_count = next_account_info(account_info_iter)?;
-
-        // verileri oku
+    
+        // Kullanıcı verilerini oku
         let user_data = User::try_from_slice(&user.data.borrow())?;
-        let repo_data = GithubRepo::try_from_slice(&github_repo_account.data.borrow())?;
-        let pr_count_data = PrCount::try_from_slice(&pr_count.data.borrow())?;
-
-        msg!(
-            "User: {}, Repo: {}, Pull Requests: {}",
-            user_data.github_username,
-            repo_data.repo_url,
-            pr_count_data.prcount
-        );
+    
+        let account_info_vec: Vec<&AccountInfo> = account_info_iter.collect();
+    
+        // Kullanıcıya ait repoları döngü ile gez
+        for chunk in account_info_vec.chunks(2) {
+            let github_repo_account = chunk[0]; // İlk hesap GithubRepo hesabı
+            let pr_count_account = chunk[1];    // İkinci hesap PR Count hesabı
+    
+            let repo_data = GithubRepo::try_from_slice(&github_repo_account.data.borrow())?;
+            let pr_count_data = PrCount::try_from_slice(&pr_count_account.data.borrow())?;
+    
+            // Repo PDA'sını hesapla ve doğrula
+            let (repo_pda_address, _bump) = Pubkey::find_program_address(
+                &[b"repo_pda", repo_data.id.as_bytes()],
+                program_id,
+            );
+    
+            if repo_pda_address != *github_repo_account.key {
+                msg!("Invalid Repo PDA for repo: {}", repo_data.repo_url);
+                continue;  // Eğer PDA uyumsuzsa bu repo'yu atlayıp devam et
+            }
+    
+            // PR Counter PDA'sını hesapla ve doğrula
+            let (pr_counter_address, _bump) = Pubkey::find_program_address(
+                &[
+                    b"pull request counter",
+                    user_data.github_username.as_ref(),
+                    repo_data.repo_url.as_ref(),
+                ],
+                program_id,
+            );
+    
+            if pr_counter_address != *pr_count_account.key {
+                msg!(
+                    "Invalid PR Count PDA for user: {} and repo: {}",
+                    user_data.github_username,
+                    repo_data.repo_url
+                );
+                continue;  // Eğer PDA uyumsuzsa bu PR'yi atlayıp devam et
+            }
+    
+            // Kullanıcı ve repo için PR sayısını ekrana yazdır
+            msg!(
+                "User: {}, Repo: {}, Pull Requests: {}",
+                user_data.github_username,
+                repo_data.repo_url,
+                pr_count_data.prcount
+            );
+        }
+    
         Ok(())
     }
+    
+
 }
