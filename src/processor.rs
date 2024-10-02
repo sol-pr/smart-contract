@@ -60,7 +60,9 @@ impl Processor {
                 Self::get_repo_by_id(accounts, _program_id, id)
             }
 
-            RNGProgramInstruction::Transfer => Self::transfer_reward(accounts, _program_id),
+            RNGProgramInstruction::Transfer {
+                github_username,id
+            } => Self::transfer_reward(accounts, _program_id,github_username,id),
 
             RNGProgramInstruction::GetPRepo => {
                 Self::get_pull_requests_per_user(accounts, _program_id)
@@ -139,7 +141,7 @@ impl Processor {
             &[
                 b"pull request counter",
                 user_data.github_username.to_string().as_ref(),
-                repo_data.repo_url.to_string().as_ref(),
+                repo_data.id.to_string().as_ref(),
             ],
             program_id,
         );
@@ -156,7 +158,7 @@ impl Processor {
             &[&[
                 b"pull request counter",
                 user_data.github_username.to_string().as_ref(),
-                repo_data.repo_url.to_string().as_ref(),
+                repo_data.id.to_string().as_ref(),
                 &[bump],
             ]],
         )?;
@@ -164,7 +166,10 @@ impl Processor {
         Ok(())
     }
 
-    pub fn get_pull_request_count(accounts: &[AccountInfo], program_id: &Pubkey) -> ProgramResult {
+    pub fn get_pull_request_count(
+    accounts: &[AccountInfo], 
+    program_id: &Pubkey
+    ) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
         let user = next_account_info(account_info_iter)?;
         let github_repo_account = next_account_info(account_info_iter)?;
@@ -443,7 +448,12 @@ impl Processor {
     }
 
     // odul transfer fonks
-    pub fn transfer_reward(accounts: &[AccountInfo], program_id: &Pubkey) -> ProgramResult {
+    pub fn transfer_reward(
+        accounts: &[AccountInfo],
+        program_id: &Pubkey,
+        github_username: String,
+        id: String,
+        ) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
         let payer = next_account_info(account_info_iter)?;
         let user = next_account_info(account_info_iter)?;
@@ -465,7 +475,7 @@ impl Processor {
          &[
         b"pull request counter",
         user_data.github_username.as_ref(),
-        repo_data.repo_url.as_ref(),
+        repo_data.id.as_ref(),
             ],
                  program_id,
             );
@@ -476,7 +486,7 @@ impl Processor {
         }
 
         let (repo_pda_address, _bump) = Pubkey::find_program_address(
-     &[b"repo_pda", repo_data.id.as_bytes()],
+        &[b"repo_pda", repo_data.id.as_bytes()],
         program_id,
         );
 
@@ -491,27 +501,26 @@ impl Processor {
             let transfer_amount = repo_data.reward_per_pull_request;
 
             let user_wallet_address = Pubkey::new(&user_data.phantom_wallet);
+            let owner_wallet_address = Pubkey::new(&repo_data.owner_wallet_address);
 
             // Ödül transfer talimatı
             let transfer_instruction =
-                system_instruction::transfer(payer.key, &user_wallet_address, transfer_amount);
+                system_instruction::transfer(&owner_wallet_address, &user_wallet_address, transfer_amount);
 
             // Ödül transferini gerçekleştir
-            invoke(&transfer_instruction, &[payer.clone(), user.clone()])?;
+            invoke(&transfer_instruction, &[github_repo_account.clone(), user.clone()])?;
 
             // count guncelle
-            pr_count_data.prcount = pr_count_data
-                .prcount
-                .checked_sub(repo_data.pull_request_limit)
-                .ok_or(ProgramError::InvalidAccountData)?;
+            pr_count_data.prcount = 0 ;
 
              // Kullanıcının toplam kazancını güncelle
             user_data.totalearn = user_data
             .totalearn
             .checked_add(transfer_amount)
             .ok_or(ProgramError::InvalidAccountData)?;
-         }
 
+            msg!("Traansfer gerceklesti");
+         }
          
             // pr sayisini arttiralim
             pr_count_data.prcount = pr_count_data
@@ -525,16 +534,21 @@ impl Processor {
             .checked_add(1)
             .ok_or(ProgramError::InvalidAccountData)?;
 
+            msg!("Traansfer gerceklesmedi");
+            
         let mut pr_count_data_account = pr_count.try_borrow_mut_data()?;
         pr_count_data.serialize(&mut &mut pr_count_data_account[..])?;
 
         let mut user_data_account = user.try_borrow_mut_data()?;
         user_data.serialize(&mut &mut user_data_account[..])?;
 
+        let mut github_repo_data_account = github_repo_account.try_borrow_mut_data()?;
+        repo_data.serialize(&mut &mut github_repo_data_account[..])?;
+
+
         Ok(())
     }
 
-    
     // Kullanıcının birden fazla repo için PR sayılarını gösteren fonksiyon
     pub fn get_pull_requests_per_user(
         accounts: &[AccountInfo],

@@ -34,3 +34,10 @@ pub struct GithubRepo {
 pub struct PrCount {
     pub prcount: u64,
 }
+
+
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
+pub struct CheckTransfer {
+    pub github_username: String,
+    pub id: String, 
+ }

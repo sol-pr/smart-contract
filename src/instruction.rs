@@ -1,6 +1,6 @@
 use crate::{
     error::RNGProgramError::InvalidInstruction,
-    state::{GithubRepo, PrCount, User, UserForCreate},
+    state::{CheckTransfer, GithubRepo, PrCount, User, UserForCreate},
 };
 use borsh::BorshDeserialize;
 use solana_program::{msg, program_error::ProgramError};
@@ -27,7 +27,10 @@ pub enum RNGProgramInstruction {
     GetRepoUrl {
         id: String,
     },
-    Transfer,
+    Transfer{
+        github_username: String,
+        id: String,
+    },
 
     GetPRepo,
 }
@@ -63,9 +66,16 @@ impl RNGProgramInstruction {
                 let repo: GithubRepo = GithubRepo::try_from_slice(&rest)?;
                 Self::GetRepoUrl { id: repo.id }
             }
-            7 => Self::Transfer,
+            7 => {
+                let transfer = CheckTransfer::try_from_slice(&rest).map_err(|_| InvalidInstruction)?;
+                Self::Transfer {
+                    github_username: transfer.github_username,
+                    id:transfer.id,
+                }
+            },
             8 => Self::GetPRepo,
             _ => return Err(InvalidInstruction.into()),
         })
     }
 }
+
