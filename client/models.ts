@@ -126,9 +126,9 @@ export const PrCountShema = new Map([
 export class CheckTransfer {
   id: string = "";
   github_username: string = "";
-  
 
-  constructor(fields: {id: string; github_username: string; } | undefined = undefined) {
+
+  constructor(fields: { id: string; github_username: string; } | undefined = undefined) {
     if (fields) {
       this.id = fields.id;
       this.github_username = fields.github_username;
@@ -140,9 +140,33 @@ export const CheckTransferShema = new Map([
   [CheckTransfer, {
     kind: "struct",
     fields: [
-      ["id",  "String"],
+      ["id", "String"],
       ["github_username", "String"],
-      
+
+    ]
+  }]
+]);
+
+export class PrCountAccess {
+  id: string = "";
+  phantom_wallet: Uint8Array = new Uint8Array(32);
+
+
+
+  constructor(fields: { id: string; phantom_wallet: Uint8Array; } | undefined = undefined) {
+    if (fields) {
+      this.id = fields.id;
+      this.phantom_wallet = fields.phantom_wallet;
+    }
+  }
+}
+
+export const PrCountAccessShema = new Map([
+  [PrCountAccess, {
+    kind: "struct",
+    fields: [
+      ["id", "String"],
+      ["phantom_wallet", ["u8", 32]],
     ]
   }]
 ]);

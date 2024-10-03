@@ -1,17 +1,19 @@
 use crate::{
     error::RNGProgramError::InvalidInstruction,
-    state::{CheckTransfer, GithubRepo, PrCount, User, UserForCreate},
+    state::{GithubRepo, PrCountAccess, User, UserForCreate},
 };
 use borsh::BorshDeserialize;
-use solana_program::{msg, program_error::ProgramError};
+use solana_program::program_error::ProgramError;
 
 #[derive(Debug, PartialEq)]
 pub enum RNGProgramInstruction {
-    TotalPrCount {
-        User: User,
+    CreatePrCount {
+        id: String,
+        user_phantom_wallet: [u8; 32],
     },
-    PullRequestCount {
-        PrCount: PrCount,
+    IncreaseRequestCount {
+        id: String,
+        user_phantom_wallet: [u8; 32],
     },
     ManageUser {
         github_username: String,
@@ -21,17 +23,13 @@ pub enum RNGProgramInstruction {
         phantom_wallet: [u8; 32],
     },
     CreateRepo {
-        GithubRepo: GithubRepo,
+        github_repo: GithubRepo,
     },
     GetRepo,
     GetRepoUrl {
         id: String,
     },
-    Transfer{
-        github_username: String,
-        id: String,
-    },
-
+    Transfer,
     GetPRepo,
 }
 
@@ -39,12 +37,20 @@ impl RNGProgramInstruction {
     pub fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
         let (tag, rest) = input.split_first().ok_or(InvalidInstruction)?;
         Ok(match tag {
-            0 => Self::TotalPrCount {
-                User: User::try_from_slice(&rest)?,
-            },
-            1 => Self::PullRequestCount {
-                PrCount: PrCount::try_from_slice(&rest)?,
-            },
+            0 => {
+                let pr = PrCountAccess::try_from_slice(&rest).map_err(|_| InvalidInstruction)?;
+                Self::CreatePrCount {
+                    id: pr.id,
+                    user_phantom_wallet: pr.user_phantom_wallet,
+                }
+            }
+            1 => {
+                let pr = PrCountAccess::try_from_slice(&rest).map_err(|_| InvalidInstruction)?;
+                Self::IncreaseRequestCount {
+                    id: pr.id,
+                    user_phantom_wallet: pr.user_phantom_wallet,
+                }
+            }
             2 => {
                 let user = UserForCreate::try_from_slice(&rest).map_err(|_| InvalidInstruction)?;
                 Self::ManageUser {
@@ -59,23 +65,17 @@ impl RNGProgramInstruction {
                 }
             }
             4 => Self::CreateRepo {
-                GithubRepo: GithubRepo::try_from_slice(&rest)?,
+                github_repo: GithubRepo::try_from_slice(&rest)?,
             },
             5 => Self::GetRepo,
             6 => {
                 let repo: GithubRepo = GithubRepo::try_from_slice(&rest)?;
                 Self::GetRepoUrl { id: repo.id }
             }
-            7 => {
-                let transfer = CheckTransfer::try_from_slice(&rest).map_err(|_| InvalidInstruction)?;
-                Self::Transfer {
-                    github_username: transfer.github_username,
-                    id:transfer.id,
-                }
-            },
+            7 => Self::Transfer,
+
             8 => Self::GetPRepo,
             _ => return Err(InvalidInstruction.into()),
         })
     }
 }
-

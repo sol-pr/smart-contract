@@ -3,13 +3,15 @@ use thiserror::Error;
 
 #[derive(Error, Debug, Copy, Clone)]
 pub enum RNGProgramError {
-  /// Invalid Instruction
-  #[error("Invalid Instruction")]
-  InvalidInstruction,
+    /// Invalid Instruction
+    #[error("Invalid Instruction")]
+    InvalidInstruction,
+    #[error("Arithmetic Err")]
+    ArithmeticErr,
 }
 
 impl From<RNGProgramError> for ProgramError {
-  fn from(e: RNGProgramError) -> Self {
-    ProgramError::Custom(e as u32)
-  }
+    fn from(e: RNGProgramError) -> Self {
+        ProgramError::Custom(e as u32)
+    }
 }

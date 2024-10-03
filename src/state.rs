@@ -1,7 +1,4 @@
-use ahash::{HashMap, HashMapExt};
-use borsh::{BorshDeserialize, BorshSerialize};
 use borsh_derive::{BorshDeserialize, BorshSerialize};
-use solana_program::pubkey::Pubkey;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
 pub struct User {
@@ -16,6 +13,12 @@ pub struct User {
 pub struct UserForCreate {
     pub github_username: String,
     pub phantom_wallet: [u8; 32],
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
+pub struct PrCountAccess {
+    pub id: String,
+    pub user_phantom_wallet: [u8; 32],
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
@@ -35,9 +38,8 @@ pub struct PrCount {
     pub prcount: u64,
 }
 
-
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
 pub struct CheckTransfer {
     pub github_username: String,
-    pub id: String, 
- }
+    pub id: String,
+}
