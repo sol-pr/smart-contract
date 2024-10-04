@@ -264,7 +264,7 @@ const increasePullRequestCount = async (
     connection.sendTransaction(tx);
     console.log("New users account => " + prCounterPDA[0])
 
-
+    return true;
   }
   else {
     const prCountAccess = new PrCountAccess();
@@ -298,7 +298,23 @@ const increasePullRequestCount = async (
 
     connection.sendTransaction(tx);
     console.log("UpdatesUser => " + prCounterPDA[0])
+
+    return true;
   }
+
+};
+
+const getCuttentPRCount = async (
+  user: PublicKey,
+  githubRepoId: string) => {
+  const prCounterPDA = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("pull request counter"),
+      Buffer.from(user.toBytes()),
+      Buffer.from(githubRepoId)
+    ],
+    program_id
+  );
 
   const prCount = await connection.getAccountInfo(prCounterPDA[0]);
 
@@ -308,9 +324,8 @@ const increasePullRequestCount = async (
 
   const prCountDeserialize = deserialize(PrCountShema, PrCount, prCount.data);
 
-  return prCountDeserialize.prcount;
-
-};
+  console.log("Şimdiki Sayaç->", prCountDeserialize.prcount);
+}
 (async () => {
   // const repos: GithubRepo[] = await getAllRepos();
 
@@ -319,9 +334,19 @@ const increasePullRequestCount = async (
   // });
 
   const result = await increasePullRequestCount(new PublicKey("BUBtN9W8Ypt7S1w5otZVM7cU8HTgM7M2CjTt4z1L1Net"),
-    "773002246");
+    "273002238");
 
-  console.log("CurrentCount for bgraokmush =>", result);
+  //waite 2sn 
+  await sleep(2000);
+
+  if (result) {
+    await getCuttentPRCount(new PublicKey("BUBtN9W8Ypt7S1w5otZVM7cU8HTgM7M2CjTt4z1L1Net"), "273002238");
+  }
+
+
 }
 )();
 
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
