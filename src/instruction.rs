@@ -30,6 +30,9 @@ pub enum RNGProgramInstruction {
         id: String,
     },
     Transfer,
+    LoasBountyRepo {
+        amount: u64,
+    },
     GetPRepo,
 }
 
@@ -73,8 +76,10 @@ impl RNGProgramInstruction {
                 Self::GetRepoUrl { id: repo.id }
             }
             7 => Self::Transfer,
-
-            8 => Self::GetPRepo,
+            8 => Self::LoasBountyRepo {
+                amount: u64::try_from_slice(&rest)?,
+            },
+            9 => Self::GetPRepo,
             _ => return Err(InvalidInstruction.into()),
         })
     }

@@ -4,6 +4,8 @@ use crate::{
     state::{GithubRepo, PrCount, User},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+use solana_program::account_info::Account;
+use solana_program::borsh0_10::try_from_slice_unchecked;
 use solana_program::system_program;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -60,6 +62,10 @@ impl Processor {
             }
 
             RNGProgramInstruction::Transfer => Self::transfer_reward(accounts, _program_id),
+
+            RNGProgramInstruction::LoasBountyRepo { amount } => {
+                Self::load_bounty_repo(accounts, _program_id, amount)
+            }
 
             RNGProgramInstruction::GetPRepo => {
                 Self::get_pull_requests_per_user(accounts, _program_id)
@@ -265,72 +271,50 @@ impl Processor {
     }
 
     // Yeni repo ve repo cüzdan hesabı oluşturma
+    // Program'daki eksik hesapları ekliyoruz
     pub fn create_repo(
         accounts: &[AccountInfo],
         program_id: &Pubkey,
         data: GithubRepo,
     ) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
-        let payer = next_account_info(account_info_iter)?; // İşlemi gerçekleştiren kişi
-        let github_repo_account = next_account_info(account_info_iter)?; // GitHub repo hesabı (PDA)
-        let repo_wallet_account = next_account_info(account_info_iter)?; // Repo cüzdan hesabı
-        let system_program = next_account_info(account_info_iter)?; // Sistem programı
+        let payer = next_account_info(account_info_iter)?;
+        let github_repo_account = next_account_info(account_info_iter)?;
+        let system_program = next_account_info(account_info_iter)?;
+        let rent_sysvar = next_account_info(account_info_iter)?; // Rent ekliyoruz
 
-        // Payer'ın imzacı olup olmadığını kontrol et
-        if !payer.is_signer {
-            msg!("Payer is not a signer");
-            return Err(ProgramError::MissingRequiredSignature);
-        }
-
-        // PDA (Program Derived Address) oluşturuluyor
+        // PDA oluşturuluyor
         let (repo_pda_address, bump) =
             Pubkey::find_program_address(&[b"repo_pda", data.id.as_bytes()], program_id);
 
-        // GitHub repo hesabının PDA ile eşleşip eşleşmediğini kontrol et
         if repo_pda_address != *github_repo_account.key {
             msg!("Provided GitHub repo account does not match derived PDA.");
             return Err(ProgramError::InvalidArgument);
         }
 
-        let repo_info_size = 4 + data.id.len() + data.repo_url.len() + data.repo_name.len() + data.repo_description.len() + 32 * 2 + 8 * 3;
-        // PDA için minimum rent (kira bedeli) hesaplanıyor
-        let rent = Rent::get()?;
-        let repo_rent = rent.minimum_balance(repo_info_size); // Repo hesabı için kira bedeli, başlangıçta 0 bakiye ile
+        // Yeni bir cüzdan account'u oluşturuluyor (repo_wallet_address)
+        let (repo_wallet_pda, wallet_bump) =
+            Pubkey::find_program_address(&[b"repo_wallet", data.id.as_bytes()], program_id);
 
-        // GitHub repo hesabı için bir hesap oluşturuluyor
+        let rent = Rent::get()?;
+        let wallet_rent = rent.minimum_balance(0);
+
         invoke_signed(
             &system_instruction::create_account(
                 payer.key,
-                &repo_pda_address,
-                repo_rent,
-                repo_info_size as u64, // Hesap için gerekli space (şu anlık 0 olarak ayarlıyoruz)
-                program_id,
-            ),
-            &[
-                github_repo_account.clone(),
-                payer.clone(),
-                system_program.clone(),
-            ],
-            &[&[b"repo_pda", data.id.as_bytes(), &[bump]]],
-        )?;
-        let wallet_info_size = 8 + 32; // Sadece bir cüzdan adresi ve balance saklayacaksa
-        let repo_wallet_rent = rent.minimum_balance(wallet_info_size); // Cüzdan hesabı için kira bedeli
-        
-        invoke(
-            &system_instruction::create_account(
-                payer.key,
-                repo_wallet_account.key,
-                repo_wallet_rent,
-                wallet_info_size as u64,
+                &repo_wallet_pda,
+                wallet_rent,
+                0, // Wallet için veri alanı yok
                 program_id,
             ),
             &[
                 payer.clone(),
-                repo_wallet_account.clone(),
-                system_program.clone(),
+                system_program.clone(), // System Program ekleniyor
             ],
+            &[&[b"repo_wallet", data.id.as_bytes(), &[wallet_bump]]],
         )?;
 
+        // Veri yapılandırması
         let repo_info = GithubRepo {
             id: data.id.clone(),
             repo_url: data.repo_url,
@@ -340,18 +324,33 @@ impl Processor {
             pull_request_limit: data.pull_request_limit,
             reward_per_pull_request: data.reward_per_pull_request,
             owner_wallet_address: data.owner_wallet_address,
-            repo_wallet_address: repo_wallet_account.key.to_bytes(), // Burada repo_wallet_account adresini kullanıyoruz
+            repo_wallet_address: repo_wallet_pda.to_bytes(),
         };
-        
 
-        // Repo bilgilerini seri hale getirip PDA hesabına yazıyoruz
         let mut serialized_data = vec![];
         repo_info.serialize(&mut serialized_data)?;
 
-        let mut account_data = github_repo_account.try_borrow_mut_data()?;
-        // Veriyi GitHub repo hesabına yazıyoruz
-        repo_info.serialize(&mut &mut github_repo_account.try_borrow_mut_data()?[..])?;
+        let repo_rent = rent.minimum_balance(serialized_data.len());
 
+        invoke_signed(
+            &system_instruction::create_account(
+                payer.key,
+                &repo_pda_address,
+                repo_rent,
+                serialized_data.len() as u64,
+                program_id,
+            ),
+            &[
+                github_repo_account.clone(),
+                payer.clone(),
+                system_program.clone(),
+                rent_sysvar.clone(), // Rent sysvar ekleniyor
+            ],
+            &[&[b"repo_pda", data.id.clone().as_bytes(), &[bump]]],
+        )?;
+
+        // Veriyi GitHub repo account'una yaz
+        repo_info.serialize(&mut &mut github_repo_account.try_borrow_mut_data()?[..])?;
 
         Ok(())
     }
@@ -524,6 +523,64 @@ impl Processor {
         pr_count_data.serialize(&mut &mut pr_counter_account.try_borrow_mut_data()?[..])?;
         user_data.serialize(&mut &mut user_account.try_borrow_mut_data()?[..])?;
         githup_repo_data.serialize(&mut &mut github_repo_account.try_borrow_mut_data()?[..])?;
+
+        Ok(())
+    }
+
+    // Repo cüzdan hesabına ödül yükleme
+    pub fn load_bounty_repo(
+        accounts: &[AccountInfo],
+        program_id: &Pubkey,
+        amount: u64, // Yüklenecek SOL miktarı
+    ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+
+        // Phantom wallet hesabı (transferi yapacak kişi/hesap)
+        let phantom_wallet_account = next_account_info(account_info_iter)?;
+
+        // GitHub repo account'u
+        let github_repo_account = next_account_info(account_info_iter)?;
+
+        // Phantom wallet'ın imzacı olup olmadığını kontrol et
+        if !phantom_wallet_account.is_signer {
+            msg!("Phantom wallet account is not a signer");
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+
+        // GitHub repo account'un yazılabilir olup olmadığını kontrol et
+        if !github_repo_account.is_writable {
+            msg!("GitHub repo account is not writable");
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        let github_repo_data = GithubRepo::try_from_slice(&github_repo_account.data.borrow())?;
+
+        // Repo Wallet PDA adresini kontrol et
+        let (repo_wallet_pda, _bump) = Pubkey::find_program_address(
+            &[b"repo_wallet", github_repo_data.id.as_bytes()],
+            program_id,
+        );
+
+        if repo_wallet_pda != Pubkey::new_from_array(github_repo_data.repo_wallet_address) {
+            msg!("Repo wallet address does not match the derived PDA.");
+            return Err(ProgramError::InvalidArgument);
+        }
+
+        // Phantom wallet'tan Repo Wallet PDA adresine SOL transferi
+        invoke(
+            &system_instruction::transfer(
+                phantom_wallet_account.key, // Transferi yapan hesap
+                &repo_wallet_pda,           // Transferin hedefi olan repo wallet
+                amount,                     // Transfer miktarı (lamports)
+            ),
+            &[phantom_wallet_account.clone(), github_repo_account.clone()],
+        )?;
+
+        msg!(
+            "Loaded {} lamports into the repo wallet address: {:?}",
+            amount,
+            repo_wallet_pda
+        );
 
         Ok(())
     }
