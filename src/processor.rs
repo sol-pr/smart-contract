@@ -442,7 +442,7 @@ impl Processor {
     pub fn transfer_reward(accounts: &[AccountInfo], _program_id: &Pubkey) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
         let payer = next_account_info(account_info_iter)?; // Transaction başlatıcısı
-        let github_repo_account = next_account_info(account_info_iter)?; // GithubRepo hesabı
+        let github_repo_account = next_account_info(account_info_iter)?;
         let user_account = next_account_info(account_info_iter)?; // User hesabı
         let pr_counter_account = next_account_info(account_info_iter)?; // PR Counter hesabı
 
@@ -481,11 +481,11 @@ impl Processor {
             //Transfer Gerçekleşecek
 
             let user_wallet_address = Pubkey::try_from(user_data.phantom_wallet).unwrap();
-            let owner_wallet_address =
-                Pubkey::try_from(githup_repo_data.owner_wallet_address).unwrap();
+            let repo_wallet_address =
+                Pubkey::try_from(githup_repo_data.repo_wallet_address).unwrap();
 
             let transfer_instruction = system_instruction::transfer(
-                &owner_wallet_address,
+                &repo_wallet_address,
                 &user_wallet_address,
                 githup_repo_data.reward_per_pull_request,
             );
@@ -547,23 +547,11 @@ impl Processor {
             return Err(ProgramError::InvalidAccountData);
         }
 
-        let github_repo_data = GithubRepo::try_from_slice(&github_repo_account.data.borrow())?;
-
-        let (repo_wallet_pda, _bump) = Pubkey::find_program_address(
-            &[b"repo_wallet", github_repo_data.id.as_bytes()],
-            program_id,
-        );
-
-        if repo_wallet_pda != Pubkey::new_from_array(github_repo_data.repo_wallet_address) {
-            msg!("Repo wallet address does not match the derived PDA.");
-            return Err(ProgramError::InvalidArgument);
-        }
-
         // Phantom wallet'tan Repo Wallet PDA adresine SOL transferi
         invoke(
             &system_instruction::transfer(
                 phantom_wallet_account.key, 
-                &repo_wallet_pda,
+                github_repo_account.key,
                 data.amount,
             ),
             &[ phantom_wallet_account.clone(), 
@@ -574,7 +562,7 @@ impl Processor {
         msg!(
             "Loaded {} lamports into the repo wallet address: {:?}",
             data.amount,
-            repo_wallet_pda
+            github_repo_account.key
         );
 
         Ok(())

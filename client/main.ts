@@ -315,18 +315,19 @@ const transferReward = async (
 const loadBountyRepo = async (
   id: string,
   phantomWallet: PublicKey,
+  github_repo_account: PublicKey,
   amount: bigint,
 ) => {
-
-  const githubRepoPDA = PublicKey.findProgramAddressSync([Buffer.from("repo_wallet"), Buffer.from(id)], program_id);
+  const data = Buffer.alloc(8); // 64-bit unsigned integer için 8 byte ayırıyoruz
+  data.writeBigUInt64LE(amount); // Miktarı little-endian olarak yazıyoruz
 
   const instruction = new TransactionInstruction({
     keys: [
       { pubkey: phantomWallet, isSigner: true, isWritable: true },  
-      { pubkey: githubRepoPDA[0], isSigner: false, isWritable: true }, 
+      { pubkey: github_repo_account, isSigner: false, isWritable: true }, 
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }
     ],
-    data: Buffer.from([8]), 
+    data: data, 
     programId: program_id 
   });
 
@@ -394,11 +395,11 @@ const getRepoBalace = async (
 
   // await create_repo(repo);
 
-  await loadBountyRepo("12345", wallet2, BigInt(0.1 * 1_000_000_000)); // 0.1 SOL
-  console.log(await getRepo("12345"));
+  // await loadBountyRepo("12345", wallet2, BigInt(0.1 * 1_000_000_000)); // 0.1 SOL
+  // console.log(await getRepo("12345")); 
   
-  const result = await getRepoBalace("12345");
-  console.log("Repo balance:", result);
+  // const result = await getRepoBalace("12345");
+  // console.log("Repo balance:", result);
 
   //İMZA ATMAK LAZIM OLDUĞU İÇİN SORUN OLUYOR
   // YENİ CÜZDAN OLUŞTURUP PARA TRANSFER ET
