@@ -12,7 +12,7 @@ import {
 
 } from "@solana/web3.js";
 import { deserialize, serialize } from "borsh";
-import { User, UserShema, GithubRepo, GithubRepoShema, PrCount, PrCountShema, UserForCreate, UserForCreateShema, CheckTransfer, CheckTransferShema, PrCountAccess, PrCountAccessShema } from "./models";
+import { User, UserShema, GithubRepo, GithubRepoShema, PrCount, PrCountShema, UserForCreate, UserForCreateShema, PrCountAccess, PrCountAccessShema } from "./models";
 const connection = new Connection("https://api.devnet.solana.com", "confirmed");
 
 const privatekey = [96, 105, 112, 230, 111, 23, 182, 37, 224, 241, 51, 108, 76, 156, 240, 180, 3, 209, 232, 107, 148, 38, 252, 171, 79, 6, 53, 220, 154, 195, 76, 79, 29, 243, 93, 105, 64, 148, 53, 217, 112, 192, 90, 18, 120, 45, 250, 253, 196, 5, 196, 123, 226, 88, 239, 5, 225, 17, 12, 23, 143, 232, 58, 107]
@@ -58,6 +58,7 @@ const create_user = async (github_username: string, phantom_wallet: Uint8Array) 
   connection.sendTransaction(tx);
   console.log("New users account => " + userPDA[0])
 }
+
 const getUser = async (phantomWallet: Uint8Array): Promise<string> => {
 
   const publicKey = PublicKey.findProgramAddressSync([Buffer.from("user_pda"), Buffer.from(phantomWallet)], program_id);
@@ -73,19 +74,13 @@ const getUser = async (phantomWallet: Uint8Array): Promise<string> => {
 }
 
 const create_repo = async (repo: GithubRepo) => {
-  const createRepo = new GithubRepo();
-  createRepo.repo_url = repo.repo_url;
-  createRepo.repo_name = repo.repo_name;
-  createRepo.repo_description = repo.repo_description;
-  createRepo.total_pull_requests = BigInt(0);
-  createRepo.pull_request_limit = repo.pull_request_limit;
-  createRepo.reward_per_pull_request = repo.reward_per_pull_request;
-  createRepo.owner_wallet_address = repo.owner_wallet_address;
 
-  const encoded = serialize(GithubRepoShema, createRepo);
+
+  const encoded = serialize(GithubRepoShema, repo);
   const concat = Uint8Array.of(4, ...encoded);
 
   const repoPDA = PublicKey.findProgramAddressSync([Buffer.from("repo_pda"), Buffer.from(repo.id)], program_id);
+
 
   const instruction = new TransactionInstruction({
     keys: [
@@ -140,79 +135,12 @@ const getAllRepos = async () => {
 
       githubRepos.push(repoData);
     } catch (err) {
-      console.error('Error deserializing repo data:', err);
+
     }
   }
 
   console.log("All repos:", githubRepos);
   return githubRepos;
-}
-
-const transferReward = async (
-  githubRepoId: string,         // Repo ID
-  githubUsername: string,       // Kullanıcının GitHub kullanıcı adı
-  userPubkey: PublicKey
-) => {
-
-  // 1. GitHub repo PDA'sını oluştur
-  const repoPDA = PublicKey.findProgramAddressSync(
-    [Buffer.from("repo_pda"), Buffer.from(githubRepoId)],
-    program_id
-  );
-
-  const repo_read = await connection.getAccountInfo(repoPDA[0]);
-  if (repo_read == null) {
-    console.error("Repo not found");
-    return;
-  }
-  const repo_deserialized = deserialize(GithubRepoShema, GithubRepo, repo_read.data);
-  const owner_wallet = new PublicKey(repo_deserialized.owner_wallet_address);
-
-  // 2. Kullanıcının PR sayacı için PDA oluştur
-  const prCounterPDA = PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("pull request counter"),
-      Buffer.from(githubUsername),
-      Buffer.from(githubRepoId)
-    ],
-    program_id
-  );
-
-  const data = Buffer.from([7]);
-
-
-  const instruction = new TransactionInstruction({
-    keys: [
-      { pubkey: payer.publicKey, isSigner: true, isWritable: true },          // Payer (işlemi başlatan)
-      { pubkey: repoPDA[0], isSigner: false, isWritable: true },              // GitHub repo PDA
-      { pubkey: prCounterPDA[0], isSigner: false, isWritable: true },         // PR sayaç PDA
-      { pubkey: owner_wallet, isSigner: false, isWritable: true },       // Repo sahibinin cüzdan adresi
-      { pubkey: userPubkey, isSigner: false, isWritable: true },              // PR yapan kullanıcının cüzdanı
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false } // Sistem programı (SOL transfer için)
-    ],
-    data: data,
-    programId: program_id // Rust program ID'si
-  });
-
-  // 5. TransactionMessage oluştur
-  const latestBlockhash = await connection.getLatestBlockhash(); // Blok hash alınması
-  const message = new TransactionMessage({
-    instructions: [instruction],
-    payerKey: payer.publicKey,
-    recentBlockhash: latestBlockhash.blockhash
-  }).compileToV0Message();
-
-  // 6. VersionedTransaction oluştur ve imzala
-  const transaction = new VersionedTransaction(message);
-  transaction.sign([payer]); // Payer işlemi imzalıyor
-
-  // 7. Transaction'ı gönder
-  const txSignature = await connection.sendTransaction(transaction);
-
-  // 8. Transaction sonucu
-  console.log("Transaction Signature:", txSignature);
-  console.log("New PR Counter PDA:", prCounterPDA[0].toBase58());
-  console.log("New Repository PDA:", repoPDA[0].toBase58());
 }
 
 const increasePullRequestCount = async (
@@ -326,23 +254,123 @@ const getCuttentPRCount = async (
 
   console.log("Şimdiki Sayaç->", prCountDeserialize.prcount);
 }
+
+const transferReward = async (
+  id: string,
+  phantomWallet: PublicKey
+) => {
+
+  // 1. GitHub repo PDA'sını oluştur
+
+  const githubRepoPDA = PublicKey.findProgramAddressSync([Buffer.from("repo_pda"), Buffer.from(id)], program_id);
+
+  // 2. User için PDA oluştur
+  const userPDA = PublicKey.findProgramAddressSync(
+    [Buffer.from("user_pda"), Buffer.from(phantomWallet.toBytes())],
+    program_id
+  );
+
+  // 3. Kullanıcının PR sayacı için PDA oluştur
+  const prCounterPDA = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("pull request counter"),
+      Buffer.from(phantomWallet.toBytes()),
+      Buffer.from(id)
+    ],
+    program_id
+  );
+
+
+  const instruction = new TransactionInstruction({
+    keys: [
+      { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+      { pubkey: githubRepoPDA[0], isSigner: false, isWritable: true },
+      { pubkey: userPDA[0], isSigner: false, isWritable: true },
+      { pubkey: prCounterPDA[0], isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }
+    ],
+    data: Buffer.from([7]),
+    programId: program_id // Rust program ID'si
+  });
+
+  // 5. TransactionMessage oluştur
+  const latestBlockhash = await connection.getLatestBlockhash(); // Blok hash alınması
+  const message = new TransactionMessage({
+    instructions: [instruction],
+    payerKey: payer.publicKey,
+    recentBlockhash: latestBlockhash.blockhash
+  }).compileToV0Message();
+
+  // 6. VersionedTransaction oluştur ve imzala
+  const transaction = new VersionedTransaction(message);
+  transaction.sign([payer]); // Payer işlemi imzalıyor
+
+  // 7. Transaction'ı gönder
+  const txSignature = await connection.sendTransaction(transaction);
+
+  console.log("Transfer işlemi başarılı. TX Signature:", txSignature);
+
+
+}
+
 (async () => {
-  // const repos: GithubRepo[] = await getAllRepos();
+  var repos: GithubRepo[] = await getAllRepos();
 
-  // repos.forEach(element => {
-  //   console.log(element);
-  // });
-
-  const result = await increasePullRequestCount(new PublicKey("BUBtN9W8Ypt7S1w5otZVM7cU8HTgM7M2CjTt4z1L1Net"),
-    "273002238");
-
-  //waite 2sn 
-  await sleep(2000);
-
-  if (result) {
-    await getCuttentPRCount(new PublicKey("BUBtN9W8Ypt7S1w5otZVM7cU8HTgM7M2CjTt4z1L1Net"), "273002238");
+  for (let repo of repos) {
+    console.log(repo);
   }
 
+
+})();
+
+
+
+(async () => {
+  console.log("Starting...");
+  const wallet1 = new PublicKey("C6nfQf35zJZ4mw1kCGYSSm9NjhyQi9K74fLGnhZqTpPJ")
+  // create_user("edanur-caglayann", wallet1.toBytes());
+
+
+  const wallet2 = new PublicKey("BUBtN9W8Ypt7S1w5otZVM7cU8HTgM7M2CjTt4z1L1Net")
+
+  // const repo = new GithubRepo();
+  // repo.id = "123";
+  // repo.repo_description = "deneme";
+  // repo.repo_name = "deneme";
+  // repo.repo_url = "deneme";
+  // repo.total_pull_requests = BigInt(0);
+  // repo.pull_request_limit = BigInt(3);
+  // repo.reward_per_pull_request = BigInt(1);
+  // repo.owner_wallet_address = wallet2.toBytes();
+
+  // console.log(await getRepo("123"));
+
+  //İMZA ATMAK LAZIM OLDUĞU İÇİN SORUN OLUYOR
+  // YENİ CÜZDAN OLUŞTURUP PARA TRANSFER ET
+
+  // console.log("Creating repo...");
+  // await create_repo(repo);
+
+  // console.log(await getRepo("123"));
+
+  // console.log("Increasing PR count...");
+
+  // await increasePullRequestCount(wallet1, "123");
+  // console.log("Increasing PR count...");
+
+  // await increasePullRequestCount(wallet1, "123");
+
+  // console.log("Increasing PR count...");
+  //await increasePullRequestCount(wallet1, "123");
+
+  // console.log("Getting PR count...");
+  // await getCuttentPRCount(wallet1, "123");
+
+  // console.log("Transfering reward...");
+  // await transferReward("123", wallet1);
+
+  // console.log("Getting user info...");
+  // console.log(await getUser(wallet1.toBytes()));
 
 }
 )();

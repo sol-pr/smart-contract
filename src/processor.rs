@@ -278,30 +278,35 @@ impl Processor {
             return Err(ProgramError::MissingRequiredSignature);
         }
 
-        // Github repo account'un yazılabilir olduğundan emin ol
-        if !github_repo_account.is_writable {
-            msg!("GitHub repo account is not writable");
-            return Err(ProgramError::InvalidAccountData);
-        }
+        // // Github repo account'un yazılabilir olduğundan emin ol
+        // if !github_repo_account.is_writable {
+        //     msg!("GitHub repo account is not writable");
+        //     return Err(ProgramError::InvalidAccountData);
+        // }
 
         // PDA oluşturuluyor
         let (repo_pda_address, bump) =
             Pubkey::find_program_address(&[b"repo_pda", data.id.as_bytes()], program_id);
 
+        // 'github_repo_account' hesabı PDA adresi ile aynı mı kontrol et
+        if repo_pda_address != *github_repo_account.key {
+            msg!("Provided GitHub repo account does not match derived PDA.");
+            return Err(ProgramError::InvalidArgument);
+        }
+        let mut serialized_data = vec![];
+
         // Veri yapılandırması (GitHub repo verisi)
         let repo_info = GithubRepo {
             id: data.id.clone(),
-            repo_url: data.repo_url.clone(),
-            repo_name: data.repo_name.clone(),
-            repo_description: data.repo_description.clone(),
+            repo_url: data.repo_url,
+            repo_name: data.repo_name,
+            repo_description: data.repo_description,
             total_pull_requests: 0,
             pull_request_limit: data.pull_request_limit,
             reward_per_pull_request: data.reward_per_pull_request,
             owner_wallet_address: data.owner_wallet_address,
         };
 
-        // Serialize etmeden önce veriyi byte dizisine dönüştür
-        let mut serialized_data = vec![];
         repo_info.serialize(&mut serialized_data)?;
 
         let rent = Rent::get()?;
@@ -316,14 +321,14 @@ impl Processor {
                 program_id,
             ),
             &[github_repo_account.clone(), payer.clone()],
-            &[&[b"repo_pda", data.id.as_bytes(), &[bump]]],
+            &[&[b"repo_pda", data.id.clone().as_bytes(), &[bump]]],
         )?;
 
-        // Veriyi hesaba yazmadan önce alanın yeterli olup olmadığını kontrol et
-        let github_repo_data_len = github_repo_account.try_data_len()?;
-        if github_repo_data_len < serialized_data.len() {
-            return Err(ProgramError::AccountDataTooSmall);
-        }
+        // // Veriyi hesaba yazmadan önce alanın yeterli olup olmadığını kontrol et
+        // let github_repo_data_len = github_repo_account.try_data_len()?;
+        // if github_repo_data_len < serialized_data.len() {
+        //     return Err(ProgramError::AccountDataTooSmall);
+        // }
 
         // Veriyi GitHub repo account'una yaz
         repo_info.serialize(&mut &mut github_repo_account.try_borrow_mut_data()?[..])?;
@@ -416,50 +421,89 @@ impl Processor {
     }
 
     // odul transfer fonks
-    pub fn transfer_reward(
-        accounts: &[AccountInfo],
-        _program_id: &Pubkey, // Program ID'sine gerek yok çünkü PDA'lar client tarafından oluşturuluyor
-    ) -> ProgramResult {
+    pub fn transfer_reward(accounts: &[AccountInfo], _program_id: &Pubkey) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
-        let _payer = next_account_info(account_info_iter)?; // Transaction başlatıcısı
-        let user = next_account_info(account_info_iter)?; // PR yapan kullanıcı
-        let github_repo_account = next_account_info(account_info_iter)?; // GitHub repo hesabı
-        let pr_counter_account = next_account_info(account_info_iter)?; // PR sayaç hesabı (PDA)
-        let owner_wallet_account = next_account_info(account_info_iter)?; // Repo sahibinin cüzdanı
-        let system_program = next_account_info(account_info_iter)?; // Sistem programı (SOL transferi için)
+        let payer = next_account_info(account_info_iter)?; // Transaction başlatıcısı
+        let github_repo_account = next_account_info(account_info_iter)?; // GithubRepo hesabı
+        let user_account = next_account_info(account_info_iter)?; // User hesabı
+        let pr_counter_account = next_account_info(account_info_iter)?; // PR Counter hesabı
 
-        // GitHub repo PDA'sından veri al
-        let github_repo_data = GithubRepo::try_from_slice(&github_repo_account.data.borrow())?;
+        if !payer.is_signer {
+            msg!("payer is not a signer");
+            return Err(ProgramError::MissingRequiredSignature);
+        }
 
-        // PR sayaç hesabından veri al (PrCount)
-        let pr_count_data = PrCount::try_from_slice(&pr_counter_account.data.borrow())?;
-        let pr_count = pr_count_data.prcount;
+        let mut user_data = match User::try_from_slice(&user_account.data.borrow()) {
+            Ok(data) => data,
+            Err(_) => {
+                msg!("Failed to deserialize User data.");
+                return Err(ProgramError::InvalidArgument);
+            }
+        };
 
-        // PR sayısının limitine ulaşıp ulaşmadığını kontrol et
-        if pr_count >= github_repo_data.pull_request_limit {
-            msg!("Pull request limit reached. Transferring reward...");
+        let mut githup_repo_data =
+            match GithubRepo::try_from_slice(&github_repo_account.data.borrow()) {
+                Ok(data) => data,
+                Err(_) => {
+                    msg!("Failed to deserialize GithubRepo data.");
+                    return Err(ProgramError::InvalidArgument);
+                }
+            };
 
-            // Transfer edilecek ödül miktarı (SOL olarak)
-            let reward_amount = github_repo_data.reward_per_pull_request;
+        let mut pr_count_data = match PrCount::try_from_slice(&pr_counter_account.data.borrow()) {
+            Ok(data) => data,
+            Err(_) => {
+                msg!("Failed to deserialize PrCount data.");
+                return Err(ProgramError::InvalidArgument);
+            }
+        };
 
-            // Kullanıcıya SOL transferi gerçekleştir
+        // PR sayısı limiti aşıldı mı kontrol et
+        if pr_count_data.prcount >= githup_repo_data.pull_request_limit {
+            //Transfer Gerçekleşecek
+
+            let user_wallet_address = Pubkey::try_from(user_data.phantom_wallet).unwrap();
+            let owner_wallet_address =
+                Pubkey::try_from(githup_repo_data.owner_wallet_address).unwrap();
+
+            let transfer_instruction = system_instruction::transfer(
+                &owner_wallet_address,
+                &user_wallet_address,
+                githup_repo_data.reward_per_pull_request,
+            );
+
             invoke(
-                &system_instruction::transfer(
-                    &owner_wallet_account.key, // Repo sahibinin cüzdanı (SOL gönderici)
-                    &user.key,                 // PR yapan kullanıcının cüzdanı (SOL alıcı)
-                    reward_amount,             // Gönderilecek miktar
-                ),
-                &[
-                    owner_wallet_account.clone(),
-                    user.clone(),
-                    system_program.clone(),
-                ],
+                &transfer_instruction,
+                &[github_repo_account.clone(), user_account.clone()],
             )?;
 
-            msg!("Reward transferred to user.");
+            user_data.totalearn = user_data
+                .totalearn
+                .checked_add(githup_repo_data.reward_per_pull_request)
+                .ok_or(ArithmeticErr)?;
+
+            user_data.total_pr_count = user_data
+                .total_pr_count
+                .checked_add(githup_repo_data.pull_request_limit)
+                .ok_or(ArithmeticErr)?;
+
+            githup_repo_data.total_pull_requests = githup_repo_data
+                .total_pull_requests
+                .checked_add(githup_repo_data.pull_request_limit)
+                .ok_or(ArithmeticErr)?;
+
+            pr_count_data.prcount = 0;
+            msg!(
+                "Transfer successful. Reward amount: {}",
+                githup_repo_data.reward_per_pull_request
+            );
         } else {
-            msg!("Pull request limit not reached yet. No reward transfer.");
+            msg!("Pull request limit has not been reached yet.");
         }
+
+        pr_count_data.serialize(&mut &mut pr_counter_account.try_borrow_mut_data()?[..])?;
+        user_data.serialize(&mut &mut user_account.try_borrow_mut_data()?[..])?;
+        githup_repo_data.serialize(&mut &mut github_repo_account.try_borrow_mut_data()?[..])?;
 
         Ok(())
     }
@@ -486,7 +530,7 @@ impl Processor {
             let pr_count_data = PrCount::try_from_slice(&pr_count_account.data.borrow())?;
 
             // Repo PDA'sını hesapla ve doğrula
-            let (repo_pda_address, _bump) =
+            let (repo_pda_address, __bump) =
                 Pubkey::find_program_address(&[b"repo_pda", repo_data.id.as_bytes()], program_id);
 
             if repo_pda_address != *github_repo_account.key {

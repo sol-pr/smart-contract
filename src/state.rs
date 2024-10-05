@@ -38,8 +38,8 @@ pub struct PrCount {
     pub prcount: u64,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
-pub struct CheckTransfer {
-    pub github_username: String,
-    pub id: String,
-}
+// #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
+// pub struct CheckTransfer {
+//     pub phantom_wallet: [u8; 32],
+//     pub id: String,
+// }
