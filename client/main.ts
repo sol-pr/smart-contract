@@ -74,8 +74,18 @@ const getUser = async (phantomWallet: Uint8Array): Promise<string> => {
 }
 
 const create_repo = async (repo: GithubRepo) => {
+ const githubRepo = new GithubRepo();
+ githubRepo.id = repo.id;
+ githubRepo.repo_url = repo.repo_url;
+ githubRepo.repo_name = repo.repo_name;
+ githubRepo.repo_description = repo.repo_description;
+ githubRepo.total_pull_requests = BigInt(0);
+ githubRepo.pull_request_limit = repo.pull_request_limit;
+ githubRepo.reward_per_pull_request = repo.reward_per_pull_request;
+ githubRepo.owner_wallet_address = repo.owner_wallet_address;
+ githubRepo.repo_wallet_address = repo.repo_wallet_address;
 
-  const encoded = serialize(GithubRepoShema, repo);
+  const encoded = serialize(GithubRepoShema, githubRepo);
   const concat = Uint8Array.of(4, ...encoded);
 
   const repoPDA = PublicKey.findProgramAddressSync([Buffer.from("repo_pda"), Buffer.from(repo.id)], program_id);

@@ -264,7 +264,6 @@ impl Processor {
         Ok(())
     }
 
-    // yeni repo olustur
     // Yeni repo ve repo cüzdan hesabı oluşturma
     pub fn create_repo(
         accounts: &[AccountInfo],
@@ -293,9 +292,10 @@ impl Processor {
             return Err(ProgramError::InvalidArgument);
         }
 
+        let repo_info_size = 4 + data.id.len() + data.repo_url.len() + data.repo_name.len() + data.repo_description.len() + 32 * 2 + 8 * 3;
         // PDA için minimum rent (kira bedeli) hesaplanıyor
         let rent = Rent::get()?;
-        let repo_rent = rent.minimum_balance(0); // Repo hesabı için kira bedeli, başlangıçta 0 bakiye ile
+        let repo_rent = rent.minimum_balance(repo_info_size); // Repo hesabı için kira bedeli, başlangıçta 0 bakiye ile
 
         // GitHub repo hesabı için bir hesap oluşturuluyor
         invoke_signed(
@@ -303,7 +303,7 @@ impl Processor {
                 payer.key,
                 &repo_pda_address,
                 repo_rent,
-                0, // Hesap için gerekli space (şu anlık 0 olarak ayarlıyoruz)
+                repo_info_size as u64, // Hesap için gerekli space (şu anlık 0 olarak ayarlıyoruz)
                 program_id,
             ),
             &[
@@ -313,15 +313,15 @@ impl Processor {
             ],
             &[&[b"repo_pda", data.id.as_bytes(), &[bump]]],
         )?;
-
-        // Repo cüzdan hesabı için bir hesap oluşturuluyor
-        let repo_wallet_rent = rent.minimum_balance(0); // Cüzdan hesabı için de başlangıçta 0 bakiye ile
+        let wallet_info_size = 8 + 32; // Sadece bir cüzdan adresi ve balance saklayacaksa
+        let repo_wallet_rent = rent.minimum_balance(wallet_info_size); // Cüzdan hesabı için kira bedeli
+        
         invoke(
             &system_instruction::create_account(
                 payer.key,
                 repo_wallet_account.key,
                 repo_wallet_rent,
-                0, // Cüzdan hesabı için gerekli space (şu anlık 0 olarak ayarlıyoruz)
+                wallet_info_size as u64,
                 program_id,
             ),
             &[
@@ -331,7 +331,6 @@ impl Processor {
             ],
         )?;
 
-        // GitHub repo bilgilerini yapılandırıyoruz
         let repo_info = GithubRepo {
             id: data.id.clone(),
             repo_url: data.repo_url,
@@ -341,15 +340,18 @@ impl Processor {
             pull_request_limit: data.pull_request_limit,
             reward_per_pull_request: data.reward_per_pull_request,
             owner_wallet_address: data.owner_wallet_address,
-            repo_wallet_address: repo_wallet_account.key.to_bytes(), // Repo cüzdan hesabının adresi
+            repo_wallet_address: repo_wallet_account.key.to_bytes(), // Burada repo_wallet_account adresini kullanıyoruz
         };
+        
 
         // Repo bilgilerini seri hale getirip PDA hesabına yazıyoruz
         let mut serialized_data = vec![];
         repo_info.serialize(&mut serialized_data)?;
 
+        let mut account_data = github_repo_account.try_borrow_mut_data()?;
         // Veriyi GitHub repo hesabına yazıyoruz
         repo_info.serialize(&mut &mut github_repo_account.try_borrow_mut_data()?[..])?;
+
 
         Ok(())
     }
