@@ -75,17 +75,21 @@ const getUser = async (phantomWallet: Uint8Array): Promise<string> => {
 
 const create_repo = async (repo: GithubRepo) => {
 
-
   const encoded = serialize(GithubRepoShema, repo);
   const concat = Uint8Array.of(4, ...encoded);
 
   const repoPDA = PublicKey.findProgramAddressSync([Buffer.from("repo_pda"), Buffer.from(repo.id)], program_id);
 
+   const repoWalletPDA = PublicKey.findProgramAddressSync(
+    [Buffer.from("repo_wallet_pda"), Buffer.from(repo.id)], 
+    program_id
+   );
 
   const instruction = new TransactionInstruction({
     keys: [
       { pubkey: payer.publicKey, isSigner: true, isWritable: true },
       { pubkey: repoPDA[0], isSigner: false, isWritable: true },
+      { pubkey: repoWalletPDA[0], isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
 
     ],
@@ -105,6 +109,7 @@ const create_repo = async (repo: GithubRepo) => {
 
   connection.sendTransaction(tx);
   console.log("New Repository account => " + repoPDA[0])
+  console.log("New Repo Wallet account => " + repoWalletPDA[0]);
 
 }
 

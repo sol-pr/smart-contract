@@ -23,14 +23,15 @@ pub struct PrCountAccess {
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
 pub struct GithubRepo {
-    pub id: String,                     //+
-    pub repo_url: String,               //+
-    pub repo_name: String,              //+
-    pub repo_description: String,       //+
-    pub total_pull_requests: u64,       // populer repolaro belirlerim
-    pub pull_request_limit: u64,        //+
-    pub reward_per_pull_request: u64,   // Her pull request için ödül miktarı //+
-    pub owner_wallet_address: [u8; 32], // repo sahibinin cuzdan adresi //+
+    pub id: String,                  
+    pub repo_url: String,               
+    pub repo_name: String,              
+    pub repo_description: String,       
+    pub total_pull_requests: u64,       
+    pub pull_request_limit: u64,        
+    pub reward_per_pull_request: u64,   
+    pub owner_wallet_address: [u8; 32], 
+    pub repo_wallet_address: [u8; 32],
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
