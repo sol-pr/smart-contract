@@ -80,10 +80,10 @@ const create_repo = async (repo: GithubRepo) => {
 
   const repoPDA = PublicKey.findProgramAddressSync([Buffer.from("repo_pda"), Buffer.from(repo.id)], program_id);
 
-   const repoWalletPDA = PublicKey.findProgramAddressSync(
-    [Buffer.from("repo_wallet_pda"), Buffer.from(repo.id)], 
+  const repoWalletPDA = PublicKey.findProgramAddressSync(
+    [Buffer.from("repo_wallet_pda"), Buffer.from(repo.id)],
     program_id
-   );
+  );
 
   const instruction = new TransactionInstruction({
     keys: [
@@ -319,11 +319,11 @@ const transferReward = async (
 }
 
 (async () => {
-  var repos: GithubRepo[] = await getAllRepos();
+  // var repos: GithubRepo[] = await getAllRepos();
 
-  for (let repo of repos) {
-    console.log(repo);
-  }
+  // for (let repo of repos) {
+  //   console.log(repo);
+  // }
 
 
 })();
@@ -339,16 +339,16 @@ const transferReward = async (
   const wallet2 = new PublicKey("BUBtN9W8Ypt7S1w5otZVM7cU8HTgM7M2CjTt4z1L1Net")
 
   // const repo = new GithubRepo();
-  // repo.id = "123";
+  // repo.id = "1234";
+  // repo.repo_name = "deneme with account";
   // repo.repo_description = "deneme";
-  // repo.repo_name = "deneme";
-  // repo.repo_url = "deneme";
+  // repo.repo_url = "https://github.com/deneme";
   // repo.total_pull_requests = BigInt(0);
   // repo.pull_request_limit = BigInt(3);
   // repo.reward_per_pull_request = BigInt(1);
   // repo.owner_wallet_address = wallet2.toBytes();
 
-  // console.log(await getRepo("123"));
+  console.log(await getRepo("1234"));
 
   //İMZA ATMAK LAZIM OLDUĞU İÇİN SORUN OLUYOR
   // YENİ CÜZDAN OLUŞTURUP PARA TRANSFER ET
