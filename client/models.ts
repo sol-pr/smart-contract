@@ -173,3 +173,23 @@ export const PrCountAccessShema = new Map([
     ]
   }]
 ]);
+
+export class LoudBountyAccount {
+  amount: bigint = BigInt(0);
+
+  constructor(fields: { amount: bigint; } | undefined = undefined) {
+    if (fields) {
+      this.amount = fields.amount;
+
+    }
+  }
+}
+
+export const LoudBountyAccountShema = new Map([
+  [LoudBountyAccount, {
+    kind: "struct",
+    fields: [
+      ["amount", "u64"],
+    ]
+  }]
+]);

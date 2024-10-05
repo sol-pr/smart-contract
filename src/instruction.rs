@@ -1,6 +1,6 @@
 use crate::{
     error::RNGProgramError::InvalidInstruction,
-    state::{GithubRepo, PrCountAccess, User, UserForCreate},
+    state::{GithubRepo, LoudBountyAccount, PrCountAccess, User, UserForCreate},
 };
 use borsh::BorshDeserialize;
 use solana_program::program_error::ProgramError;
@@ -31,7 +31,7 @@ pub enum RNGProgramInstruction {
     },
     Transfer,
     LoasBountyRepo {
-        amount: u64,
+        data: LoudBountyAccount,
     },
     GetPRepo,
 }
@@ -77,7 +77,7 @@ impl RNGProgramInstruction {
             }
             7 => Self::Transfer,
             8 => Self::LoasBountyRepo {
-                amount: u64::try_from_slice(&rest)?,
+                data: LoudBountyAccount::try_from_slice(&rest)?,
             },
             9 => Self::GetPRepo,
             _ => return Err(InvalidInstruction.into()),

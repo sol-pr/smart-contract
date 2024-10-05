@@ -1,7 +1,7 @@
 use crate::error::RNGProgramError::ArithmeticErr;
 use crate::{
     instruction::RNGProgramInstruction,
-    state::{GithubRepo, PrCount, User},
+    state::{GithubRepo, PrCount, User, RepoWalletAccount,UserForCreate,PrCountAccess,LoudBountyAccount},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::account_info::Account;
@@ -63,8 +63,8 @@ impl Processor {
 
             RNGProgramInstruction::Transfer => Self::transfer_reward(accounts, _program_id),
 
-            RNGProgramInstruction::LoasBountyRepo { amount } => {
-                Self::load_bounty_repo(accounts, _program_id, amount)
+            RNGProgramInstruction::LoasBountyRepo { data } => {
+                Self::load_bounty_repo(accounts, _program_id, data)
             }
 
             RNGProgramInstruction::GetPRepo => {
@@ -271,7 +271,6 @@ impl Processor {
     }
 
     // Yeni repo ve repo cüzdan hesabı oluşturma
-    // Program'daki eksik hesapları ekliyoruz
     pub fn create_repo(
         accounts: &[AccountInfo],
         program_id: &Pubkey,
@@ -531,23 +530,18 @@ impl Processor {
     pub fn load_bounty_repo(
         accounts: &[AccountInfo],
         program_id: &Pubkey,
-        amount: u64, // Yüklenecek SOL miktarı
+        data: LoudBountyAccount, // Yüklenecek SOL miktarı
     ) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
-
-        // Phantom wallet hesabı (transferi yapacak kişi/hesap)
         let phantom_wallet_account = next_account_info(account_info_iter)?;
-
-        // GitHub repo account'u
         let github_repo_account = next_account_info(account_info_iter)?;
+        let system_program_account = next_account_info(account_info_iter)?;
 
-        // Phantom wallet'ın imzacı olup olmadığını kontrol et
         if !phantom_wallet_account.is_signer {
             msg!("Phantom wallet account is not a signer");
             return Err(ProgramError::MissingRequiredSignature);
         }
 
-        // GitHub repo account'un yazılabilir olup olmadığını kontrol et
         if !github_repo_account.is_writable {
             msg!("GitHub repo account is not writable");
             return Err(ProgramError::InvalidAccountData);
@@ -555,7 +549,6 @@ impl Processor {
 
         let github_repo_data = GithubRepo::try_from_slice(&github_repo_account.data.borrow())?;
 
-        // Repo Wallet PDA adresini kontrol et
         let (repo_wallet_pda, _bump) = Pubkey::find_program_address(
             &[b"repo_wallet", github_repo_data.id.as_bytes()],
             program_id,
@@ -569,16 +562,18 @@ impl Processor {
         // Phantom wallet'tan Repo Wallet PDA adresine SOL transferi
         invoke(
             &system_instruction::transfer(
-                phantom_wallet_account.key, // Transferi yapan hesap
-                &repo_wallet_pda,           // Transferin hedefi olan repo wallet
-                amount,                     // Transfer miktarı (lamports)
+                phantom_wallet_account.key, 
+                &repo_wallet_pda,
+                data.amount,
             ),
-            &[phantom_wallet_account.clone(), github_repo_account.clone()],
+            &[ phantom_wallet_account.clone(), 
+            github_repo_account.clone(), 
+            system_program_account.clone(),]
         )?;
 
         msg!(
             "Loaded {} lamports into the repo wallet address: {:?}",
-            amount,
+            data.amount,
             repo_wallet_pda
         );
 

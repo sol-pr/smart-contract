@@ -20,8 +20,6 @@ const privatekey = [96, 105, 112, 230, 111, 23, 182, 37, 224, 241, 51, 108, 76, 
 const payer = Keypair.fromSecretKey(Uint8Array.from(privatekey));
 
 const program_id = new PublicKey("FEu3sURKJ32B1KpcdqkesAfznP8P4tZW3WUh3icaSKsf");
-// const user = new PublicKey("Cqt5XDcKL3uw1ozwdFsretbGGHpDvsNLaYYhZgXXDCGZ");
-
 
 const create_user = async (github_username: string, phantom_wallet: Uint8Array) => {
 
@@ -231,7 +229,7 @@ const increasePullRequestCount = async (
     return true;
   }
 
-};
+}
 
 const getCuttentPRCount = async (
   user: PublicKey,
@@ -314,55 +312,38 @@ const transferReward = async (
 
 }
 
-// load_bounty_repo fonksiyonu
 const loadBountyRepo = async (
-  id: string,              // Repo ID
-  phantomWallet: PublicKey, // Phantom cüzdan public key'i (transferi yapan)
-  amount: number,           // Transfer edilecek SOL miktarı (lamports) 
+  id: string,
+  phantomWallet: PublicKey,
+  amount: bigint,
 ) => {
 
-  // 1. GitHub repo PDA'sını oluştur
   const githubRepoPDA = PublicKey.findProgramAddressSync([Buffer.from("repo_wallet"), Buffer.from(id)], program_id);
 
-
-  //for create new account
-  const encoded = new Uint8Array(new BigUint64Array([BigInt(amount)]).buffer);
-  const concat = Uint8Array.of(8, ...encoded);
-
-
-  // 2. Transfer için bir TransactionInstruction oluştur
   const instruction = new TransactionInstruction({
     keys: [
-      { pubkey: phantomWallet, isSigner: true, isWritable: true },    // Phantom cüzdanı imzacı ve yazılabilir
-      { pubkey: githubRepoPDA[0], isSigner: false, isWritable: true }, // GitHub repo PDA'sı yazılabilir
+      { pubkey: phantomWallet, isSigner: true, isWritable: true },  
+      { pubkey: githubRepoPDA[0], isSigner: false, isWritable: true }, 
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }
     ],
-    data: Buffer.from(concat), // Miktar verisi (lamports cinsinden)
-    programId: program_id // Rust program ID'si
+    data: Buffer.from([8]), 
+    programId: program_id 
   });
 
-  // 3. TransactionMessage oluştur
-  const latestBlockhash = await connection.getLatestBlockhash(); // Blok hash alınması
+  const latestBlockhash = await connection.getLatestBlockhash(); 
   const message = new TransactionMessage({
     instructions: [instruction],
-    payerKey: phantomWallet,  // İşlemi yapan Phantom cüzdanı
+    payerKey: phantomWallet,  
     recentBlockhash: latestBlockhash.blockhash
   }).compileToV0Message();
 
-  // 4. VersionedTransaction oluştur ve imzala
+  
   const transaction = new VersionedTransaction(message);
 
-  // Burada imzalama işlemi Phantom cüzdan tarafından yapılacak. Phantom'u kullanarak sign etmek gerekiyor.
-  // Örneğin, Phantom Extension kullanıyorsanız bu kısmı Phantom'dan imzalamak için değiştirebilirsiniz.
-  // transaction.sign([phantomWallet]); 
-
-  // 5. Transaction'ı gönder
   const txSignature = await connection.sendTransaction(transaction);
 
   console.log("Bounty yükleme işlemi başarılı. TX Signature:", txSignature);
-};
-
-
+}
 
 const getRepoBalace = async (
   id: string,              // Repo ID
@@ -379,8 +360,6 @@ const getRepoBalace = async (
   return balanceLamports / LAMPORTS_PER_SOL;
 }
 
-
-
 (async () => {
   // var repos: GithubRepo[] = await getAllRepos();
 
@@ -395,11 +374,11 @@ const getRepoBalace = async (
 
 (async () => {
   console.log("Starting...");
-  const wallet1 = new PublicKey("C6nfQf35zJZ4mw1kCGYSSm9NjhyQi9K74fLGnhZqTpPJ")
+  // const wallet1 = new PublicKey("C6nfQf35zJZ4mw1kCGYSSm9NjhyQi9K74fLGnhZqTpPJ")
   // create_user("edanur-caglayann", wallet1.toBytes());
 
 
-  // const wallet2 = new PublicKey("BUBtN9W8Ypt7S1w5otZVM7cU8HTgM7M2CjTt4z1L1Net")
+  const wallet2 = new PublicKey("BUBtN9W8Ypt7S1w5otZVM7cU8HTgM7M2CjTt4z1L1Net")
 
 
   // const repo = new GithubRepo();
@@ -415,10 +394,9 @@ const getRepoBalace = async (
 
   // await create_repo(repo);
 
-  // await loadBountyRepo("12345", wallet2, 0.1 * LAMPORTS_PER_SOL);
-
-  // console.log(await getRepo("12345"));
-
+  await loadBountyRepo("12345", wallet2, BigInt(0.1 * 1_000_000_000)); // 0.1 SOL
+  console.log(await getRepo("12345"));
+  
   const result = await getRepoBalace("12345");
   console.log("Repo balance:", result);
 
