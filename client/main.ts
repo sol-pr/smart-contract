@@ -281,13 +281,19 @@ const transferReward = async (
     program_id
   );
 
+  // 1. GitHub repo PDA'sını oluştur
+  const repoWalletPda = PublicKey.findProgramAddressSync([Buffer.from("repo_wallet"), Buffer.from(id)], program_id);
+
+
 
   const instruction = new TransactionInstruction({
     keys: [
       { pubkey: payer.publicKey, isSigner: true, isWritable: true },
       { pubkey: githubRepoPDA[0], isSigner: false, isWritable: true },
       { pubkey: userPDA[0], isSigner: false, isWritable: true },
+      { pubkey: phantomWallet, isSigner: false, isWritable: true },
       { pubkey: prCounterPDA[0], isSigner: false, isWritable: true },
+      { pubkey: repoWalletPda[0], isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }
     ],
     data: Buffer.from([7]),

@@ -1,15 +1,9 @@
 use crate::error::RNGProgramError::ArithmeticErr;
 use crate::{
     instruction::RNGProgramInstruction,
-    state::{
-        GithubRepo, LoudBountyAccount, PrCount, PrCountAccess, RepoWalletAccount, User,
-        UserForCreate,
-    },
+    state::{GithubRepo, LoudBountyAccount, PrCount, User},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::account_info::Account;
-use solana_program::borsh0_10::try_from_slice_unchecked;
-use solana_program::system_program;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -18,10 +12,11 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
     rent::Rent,
-    system_instruction::create_account,
     system_instruction::{self},
     sysvar::Sysvar,
 };
+use spl_token::instruction as token_instruction;
+
 pub struct Processor;
 impl Processor {
     pub fn process(
@@ -441,13 +436,15 @@ impl Processor {
         Ok(())
     }
 
-    // odul transfer fonks
-    pub fn transfer_reward(accounts: &[AccountInfo], _program_id: &Pubkey) -> ProgramResult {
+    pub fn transfer_reward(accounts: &[AccountInfo], program_id: &Pubkey) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
         let payer = next_account_info(account_info_iter)?; // Transaction başlatıcısı
         let github_repo_account = next_account_info(account_info_iter)?;
         let user_account = next_account_info(account_info_iter)?; // User hesabı
+        let user_wallet_account = next_account_info(account_info_iter)?; // User hesabı
         let pr_counter_account = next_account_info(account_info_iter)?; // PR Counter hesabı
+        let repo_wallet_account = next_account_info(account_info_iter)?; // Repo wallet hesabı
+        let system_program = next_account_info(account_info_iter)?;
 
         if !payer.is_signer {
             msg!("payer is not a signer");
@@ -471,7 +468,7 @@ impl Processor {
                 }
             };
 
-        let mut pr_count_data = match PrCount::try_from_slice(&pr_counter_account.data.borrow()) {
+        let mut prcount_data = match PrCount::try_from_slice(&pr_counter_account.data.borrow()) {
             Ok(data) => data,
             Err(_) => {
                 msg!("Failed to deserialize PrCount data.");
@@ -479,23 +476,41 @@ impl Processor {
             }
         };
 
-        // PR sayısı limiti aşıldı mı kontrol et
-        if pr_count_data.prcount >= githup_repo_data.pull_request_limit {
-            //Transfer Gerçekleşecek
-            let user_wallet_address = Pubkey::try_from(user_data.phantom_wallet).unwrap();
+        let (repo_wallet_pda, wallet_bump) = Pubkey::find_program_address(
+            &[b"repo_wallet", githup_repo_data.id.as_bytes()],
+            program_id,
+        );
 
-            let repo_wallet_address =
-                Pubkey::try_from(githup_repo_data.repo_wallet_address).unwrap();
+        if repo_wallet_pda != *repo_wallet_account.key {
+            msg!("Provided repo wallet account does not match derived PDA.");
+            return Err(ProgramError::InvalidArgument);
+        }
+
+        // PR sayısı limiti aşıldı mı kontrol et
+        if prcount_data.prcount >= githup_repo_data.pull_request_limit {
+            // transfer instruction oluştur
 
             let transfer_instruction = system_instruction::transfer(
-                &repo_wallet_address,
-                &user_wallet_address,
+                &repo_wallet_pda,         // Using the wallet's key for the transfer
+                &user_wallet_account.key, // Transfer to the user's wallet
                 githup_repo_data.reward_per_pull_request,
             );
 
-            invoke(
+            // transfer instruction'ı invoke et
+            // transfer instruction'ı invoke_signed ile PDA'dan yap
+            invoke_signed(
                 &transfer_instruction,
-                &[github_repo_account.clone(), user_account.clone()],
+                &[
+                    repo_wallet_account.clone(),
+                    user_wallet_account.clone(),
+                    payer.clone(),
+                    system_program.clone(),
+                ],
+                &[&[
+                    b"repo_wallet",
+                    githup_repo_data.id.as_bytes(),
+                    &[wallet_bump],
+                ]], // Include PDA seeds for signing
             )?;
 
             user_data.totalearn = user_data
@@ -513,7 +528,7 @@ impl Processor {
                 .checked_add(githup_repo_data.pull_request_limit)
                 .ok_or(ArithmeticErr)?;
 
-            pr_count_data.prcount = 0;
+            prcount_data.prcount = 0;
             msg!(
                 "Transfer successful. Reward amount: {}",
                 githup_repo_data.reward_per_pull_request
@@ -522,7 +537,7 @@ impl Processor {
             msg!("Pull request limit has not been reached yet.");
         }
 
-        pr_count_data.serialize(&mut &mut pr_counter_account.try_borrow_mut_data()?[..])?;
+        prcount_data.serialize(&mut &mut pr_counter_account.try_borrow_mut_data()?[..])?;
         user_data.serialize(&mut &mut user_account.try_borrow_mut_data()?[..])?;
         githup_repo_data.serialize(&mut &mut github_repo_account.try_borrow_mut_data()?[..])?;
 
@@ -532,7 +547,7 @@ impl Processor {
     // Repo cüzdan hesabına ödül yükleme
     pub fn load_bounty_repo(
         accounts: &[AccountInfo],
-        program_id: &Pubkey,
+        _program_id: &Pubkey,
         data: LoudBountyAccount, // Yüklenecek SOL miktarı
     ) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
