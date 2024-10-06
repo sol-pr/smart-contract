@@ -1,7 +1,10 @@
 use crate::error::RNGProgramError::ArithmeticErr;
 use crate::{
     instruction::RNGProgramInstruction,
-    state::{GithubRepo, PrCount, User, RepoWalletAccount,UserForCreate,PrCountAccess,LoudBountyAccount},
+    state::{
+        GithubRepo, LoudBountyAccount, PrCount, PrCountAccess, RepoWalletAccount, User,
+        UserForCreate,
+    },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::account_info::Account;
@@ -479,8 +482,8 @@ impl Processor {
         // PR sayısı limiti aşıldı mı kontrol et
         if pr_count_data.prcount >= githup_repo_data.pull_request_limit {
             //Transfer Gerçekleşecek
-
             let user_wallet_address = Pubkey::try_from(user_data.phantom_wallet).unwrap();
+
             let repo_wallet_address =
                 Pubkey::try_from(githup_repo_data.repo_wallet_address).unwrap();
 
@@ -550,13 +553,15 @@ impl Processor {
         // Phantom wallet'tan Repo Wallet PDA adresine SOL transferi
         invoke(
             &system_instruction::transfer(
-                phantom_wallet_account.key, 
+                phantom_wallet_account.key,
                 github_repo_account.key,
                 data.amount,
             ),
-            &[ phantom_wallet_account.clone(), 
-            github_repo_account.clone(), 
-            system_program_account.clone(),]
+            &[
+                phantom_wallet_account.clone(),
+                github_repo_account.clone(),
+                system_program_account.clone(),
+            ],
         )?;
 
         msg!(

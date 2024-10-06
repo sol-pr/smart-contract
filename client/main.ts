@@ -80,17 +80,17 @@ const create_repo = async (repo: GithubRepo) => {
   const repoPDA = PublicKey.findProgramAddressSync([Buffer.from("repo_pda"), Buffer.from(repo.id)], program_id);
   const repoWalletPDA = PublicKey.findProgramAddressSync([Buffer.from("repo_wallet"), Buffer.from(repo.id)], program_id);
 
-    const instruction = new TransactionInstruction({
-      keys: [
-        { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-        { pubkey: repoPDA[0], isSigner: false, isWritable: true },
-        { pubkey: repoWalletPDA[0], isSigner: false, isWritable: true },
-        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }, // System Program
-        { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false }, // Rent
-      ],
-      data: Buffer.from(concat),
-      programId: program_id
-    });
+  const instruction = new TransactionInstruction({
+    keys: [
+      { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+      { pubkey: repoPDA[0], isSigner: false, isWritable: true },
+      { pubkey: repoWalletPDA[0], isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }, // System Program
+      { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false }, // Rent
+    ],
+    data: Buffer.from(concat),
+    programId: program_id
+  });
 
   const message = new TransactionMessage({
     instructions: [instruction],
@@ -115,6 +115,8 @@ const getRepo = async (id: string): Promise<GithubRepo> => {
     return new GithubRepo();
   }
   const repo_deserialized = deserialize(GithubRepoShema, GithubRepo, repo_read.data);
+  const wallet = new PublicKey(repo_deserialized.repo_wallet_address);
+  console.log(wallet.toString());
   return repo_deserialized;
 }
 
@@ -251,7 +253,7 @@ const getCuttentPRCount = async (
 
   const prCountDeserialize = deserialize(PrCountShema, PrCount, prCount.data);
 
-  console.log("Şimdiki Sayaç->", prCountDeserialize.prcount);
+  console.log("Şimdiki Sayaç->", prCountDeserialize.prcount.toLocaleString());
 }
 
 const transferReward = async (
@@ -323,22 +325,22 @@ const loadBountyRepo = async (
 
   const instruction = new TransactionInstruction({
     keys: [
-      { pubkey: phantomWallet, isSigner: true, isWritable: true },  
-      { pubkey: github_repo_account, isSigner: false, isWritable: true }, 
+      { pubkey: phantomWallet, isSigner: true, isWritable: true },
+      { pubkey: github_repo_account, isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }
     ],
-    data: data, 
-    programId: program_id 
+    data: data,
+    programId: program_id
   });
 
-  const latestBlockhash = await connection.getLatestBlockhash(); 
+  const latestBlockhash = await connection.getLatestBlockhash();
   const message = new TransactionMessage({
     instructions: [instruction],
-    payerKey: phantomWallet,  
+    payerKey: phantomWallet,
     recentBlockhash: latestBlockhash.blockhash
   }).compileToV0Message();
 
-  
+
   const transaction = new VersionedTransaction(message);
 
   const txSignature = await connection.sendTransaction(transaction);
@@ -375,7 +377,7 @@ const getRepoBalace = async (
 
 (async () => {
   console.log("Starting...");
-  // const wallet1 = new PublicKey("C6nfQf35zJZ4mw1kCGYSSm9NjhyQi9K74fLGnhZqTpPJ")
+  const wallet1 = new PublicKey("C6nfQf35zJZ4mw1kCGYSSm9NjhyQi9K74fLGnhZqTpPJ")
   // create_user("edanur-caglayann", wallet1.toBytes());
 
 
@@ -397,17 +399,15 @@ const getRepoBalace = async (
 
   // await loadBountyRepo("12345", wallet2, BigInt(0.1 * 1_000_000_000)); // 0.1 SOL
   // console.log(await getRepo("12345")); 
-  
+
   // const result = await getRepoBalace("12345");
   // console.log("Repo balance:", result);
 
-  //İMZA ATMAK LAZIM OLDUĞU İÇİN SORUN OLUYOR
-  // YENİ CÜZDAN OLUŞTURUP PARA TRANSFER ET
 
   // console.log("Creating repo...");
   // await create_repo(repo);
 
-  // console.log(await getRepo("123"));
+  console.log(await getRepo("12345"));
 
   // console.log("Increasing PR count...");
 
@@ -417,13 +417,15 @@ const getRepoBalace = async (
   // await increasePullRequestCount(wallet1, "123");
 
   // console.log("Increasing PR count...");
-  //await increasePullRequestCount(wallet1, "123");
+  //await increasePullRequestCount(wallet1, "12345");
+  //
+  //await sleep(6000);
 
   // console.log("Getting PR count...");
-  // await getCuttentPRCount(wallet1, "123");
+  await getCuttentPRCount(wallet1, "12345");
 
   // console.log("Transfering reward...");
-  // await transferReward("123", wallet1);
+  await transferReward("12345", wallet1);
 
   // console.log("Getting user info...");
   // console.log(await getUser(wallet1.toBytes()));
