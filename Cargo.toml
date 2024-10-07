@@ -10,7 +10,6 @@ borsh-derive = "1.5.1"
 thiserror = "1.0.24"
 rand = "0.8"
 ahash = "0.8"
-spl-token = "6.0.0"
 
 [lib]
 crate-type = ["cdylib", "lib"]

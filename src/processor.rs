@@ -13,9 +13,7 @@ use solana_program::{
     pubkey::Pubkey,
     rent::Rent,
     system_instruction::{self},
-    sysvar::Sysvar,
 };
-use spl_token::instruction as token_instruction;
 
 pub struct Processor;
 impl Processor {
@@ -291,7 +289,7 @@ impl Processor {
         let (repo_wallet_pda, wallet_bump) =
             Pubkey::find_program_address(&[b"repo_wallet", data.id.as_bytes()], program_id);
 
-        let rent = Rent:: default();
+        let rent = Rent::default();
         let wallet_rent = rent.minimum_balance(0);
 
         invoke_signed(
@@ -302,10 +300,7 @@ impl Processor {
                 0,
                 program_id,
             ),
-            &[
-                payer.clone(),
-                repo_wallet_account.clone()
-            ],
+            &[payer.clone(), repo_wallet_account.clone()],
             &[&[b"repo_wallet", data.id.as_bytes(), &[wallet_bump]]],
         )?;
 
@@ -322,9 +317,8 @@ impl Processor {
             repo_wallet_address: repo_wallet_pda.to_bytes(),
         };
 
-        let rent = Rent:: default();
+        let rent = Rent::default();
         let repo_rent = rent.minimum_balance(184);
-        
 
         invoke_signed(
             &system_instruction::create_account(
@@ -334,10 +328,7 @@ impl Processor {
                 184,
                 program_id,
             ),
-            &[
-                github_repo_account.clone(),
-                payer.clone(),
-            ],
+            &[github_repo_account.clone(), payer.clone()],
             &[&[b"repo_pda", data.id.clone().as_bytes(), &[bump]]],
         )?;
 
@@ -433,11 +424,12 @@ impl Processor {
 
     pub fn transfer_reward(accounts: &[AccountInfo], program_id: &Pubkey) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
-        let payer = next_account_info(account_info_iter)?; 
+        let payer = next_account_info(account_info_iter)?;
         let github_repo_account = next_account_info(account_info_iter)?;
-        let user_account = next_account_info(account_info_iter)?; 
-        let pr_counter_account = next_account_info(account_info_iter)?; 
-        let repo_wallet_account = next_account_info(account_info_iter)?; 
+        let user_account = next_account_info(account_info_iter)?;
+        let user_wallet_account = next_account_info(account_info_iter)?;
+        let pr_counter_account = next_account_info(account_info_iter)?;
+        let repo_wallet_account = next_account_info(account_info_iter)?;
 
         if !payer.is_signer {
             msg!("payer is not a signer");
@@ -469,7 +461,7 @@ impl Processor {
             }
         };
 
-        let (repo_wallet_pda, wallet_bump) = Pubkey::find_program_address(
+        let (repo_wallet_pda, _wallet_bump) = Pubkey::find_program_address(
             &[b"repo_wallet", githup_repo_data.id.as_bytes()],
             program_id,
         );
@@ -478,12 +470,12 @@ impl Processor {
             msg!("Provided repo wallet account does not match derived PDA.");
             return Err(ProgramError::InvalidArgument);
         }
-
         // PR sayısı limiti aşıldı mı kontrol et
         if prcount_data.prcount >= githup_repo_data.pull_request_limit {
-
-        **repo_wallet_account.try_borrow_mut_lamports()? -= githup_repo_data.reward_per_pull_request;
-        **user_account.try_borrow_mut_lamports()? +=  githup_repo_data.reward_per_pull_request;
+            **repo_wallet_account.try_borrow_mut_lamports()? -=
+                githup_repo_data.reward_per_pull_request;
+            **user_wallet_account.try_borrow_mut_lamports()? +=
+                githup_repo_data.reward_per_pull_request;
 
             user_data.totalearn = user_data
                 .totalearn
@@ -543,10 +535,7 @@ impl Processor {
                 github_repo_account.key,
                 data.amount,
             ),
-            &[
-                phantom_wallet_account.clone(),
-                github_repo_account.clone(),
-            ],
+            &[phantom_wallet_account.clone(), github_repo_account.clone()],
         )?;
 
         msg!(
