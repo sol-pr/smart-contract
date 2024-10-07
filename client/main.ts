@@ -77,16 +77,16 @@ const create_repo = async (repo: GithubRepo) => {
   const encoded = serialize(GithubRepoShema, repo);
   const concat = Uint8Array.of(4, ...encoded);
 
-  const repoPDA = PublicKey.findProgramAddressSync([Buffer.from("repo_pda"), Buffer.from(repo.id)], program_id);
+  const githubrepoPDA = PublicKey.findProgramAddressSync([Buffer.from("repo_pda"), Buffer.from(repo.id)], program_id);
   const repoWalletPDA = PublicKey.findProgramAddressSync([Buffer.from("repo_wallet"), Buffer.from(repo.id)], program_id);
 
   const instruction = new TransactionInstruction({
     keys: [
       { pubkey: payer.publicKey, isSigner: true, isWritable: true },
-      { pubkey: repoPDA[0], isSigner: false, isWritable: true },
+      { pubkey: githubrepoPDA[0], isSigner: false, isWritable: true },
       { pubkey: repoWalletPDA[0], isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }, // System Program
-      { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false }, // Rent
+   
     ],
     data: Buffer.from(concat),
     programId: program_id
@@ -103,7 +103,7 @@ const create_repo = async (repo: GithubRepo) => {
 
   await connection.sendTransaction(tx);
 
-  console.log("New Repository account => " + repoPDA[0])
+  console.log("New Repository account => " + githubrepoPDA[0])
   console.log("New Repo Wallet account => " + repoWalletPDA[0]);
 }
 
@@ -261,17 +261,13 @@ const transferReward = async (
   phantomWallet: PublicKey
 ) => {
 
-  // 1. GitHub repo PDA'sını oluştur
-
   const githubRepoPDA = PublicKey.findProgramAddressSync([Buffer.from("repo_pda"), Buffer.from(id)], program_id);
 
-  // 2. User için PDA oluştur
   const userPDA = PublicKey.findProgramAddressSync(
     [Buffer.from("user_pda"), Buffer.from(phantomWallet.toBytes())],
     program_id
   );
 
-  // 3. Kullanıcının PR sayacı için PDA oluştur
   const prCounterPDA = PublicKey.findProgramAddressSync(
     [
       Buffer.from("pull request counter"),
@@ -281,38 +277,32 @@ const transferReward = async (
     program_id
   );
 
-  // 1. GitHub repo PDA'sını oluştur
   const repoWalletPda = PublicKey.findProgramAddressSync([Buffer.from("repo_wallet"), Buffer.from(id)], program_id);
-
-
 
   const instruction = new TransactionInstruction({
     keys: [
       { pubkey: payer.publicKey, isSigner: true, isWritable: true },
       { pubkey: githubRepoPDA[0], isSigner: false, isWritable: true },
       { pubkey: userPDA[0], isSigner: false, isWritable: true },
-      { pubkey: phantomWallet, isSigner: false, isWritable: true },
       { pubkey: prCounterPDA[0], isSigner: false, isWritable: true },
       { pubkey: repoWalletPda[0], isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }
     ],
     data: Buffer.from([7]),
-    programId: program_id // Rust program ID'si
+    programId: program_id 
   });
 
-  // 5. TransactionMessage oluştur
-  const latestBlockhash = await connection.getLatestBlockhash(); // Blok hash alınması
+  const latestBlockhash = await connection.getLatestBlockhash(); 
   const message = new TransactionMessage({
     instructions: [instruction],
     payerKey: payer.publicKey,
     recentBlockhash: latestBlockhash.blockhash
   }).compileToV0Message();
 
-  // 6. VersionedTransaction oluştur ve imzala
+ 
   const transaction = new VersionedTransaction(message);
-  transaction.sign([payer]); // Payer işlemi imzalıyor
+  transaction.sign([payer]); 
 
-  // 7. Transaction'ı gönder
   const txSignature = await connection.sendTransaction(transaction);
 
   console.log("Transfer işlemi başarılı. TX Signature:", txSignature);
