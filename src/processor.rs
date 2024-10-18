@@ -69,6 +69,7 @@ impl Processor {
         }
     }
 
+    /// Create a new PR count account for a user and repo
     pub fn create_pr_count(
         accounts: &[AccountInfo],
         program_id: &Pubkey,
@@ -129,6 +130,7 @@ impl Processor {
         Ok(())
     }
 
+    /// Increase the PR count for a user and repo
     pub fn increase_pr_count(
         accounts: &[AccountInfo],
         program_id: &Pubkey,
@@ -171,7 +173,7 @@ impl Processor {
         Ok(())
     }
 
-    // kullanci kontrolu, yoksa olustur
+    /// Create a new user account
     pub fn create_user(
         accounts: &[AccountInfo],
         program_id: &Pubkey,
@@ -231,7 +233,7 @@ impl Processor {
         Ok(())
     }
 
-    // parametre gelen publickey varsa getir
+    /// Get user account data
     pub fn get_user(
         accounts: &[AccountInfo],
         program_id: &Pubkey,
@@ -266,7 +268,7 @@ impl Processor {
         Ok(())
     }
 
-    // Yeni repo ve repo cüzdan hesabı oluşturma
+    /// Create a new GitHub repo account
     pub fn create_repo(
         accounts: &[AccountInfo],
         program_id: &Pubkey,
@@ -338,6 +340,7 @@ impl Processor {
         Ok(())
     }
 
+    /// Get all GitHub repo accounts
     pub fn get_all_repos(accounts: &[AccountInfo], program_id: &Pubkey) -> ProgramResult {
         let mut github_repos: Vec<GithubRepo> = Vec::new();
         let account_info_iter = &mut accounts.iter();
@@ -382,7 +385,7 @@ impl Processor {
         Ok(())
     }
 
-    // repo url'e gore repoyu getir
+    /// Get a GitHub repo account by ID
     pub fn get_repo_by_id(
         accounts: &[AccountInfo],
         program_id: &Pubkey,
@@ -422,6 +425,7 @@ impl Processor {
         Ok(())
     }
 
+    /// Transfer reward from repo wallet to user wallet
     pub fn transfer_reward(accounts: &[AccountInfo], program_id: &Pubkey) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
         let payer = next_account_info(account_info_iter)?;
@@ -508,7 +512,7 @@ impl Processor {
         Ok(())
     }
 
-    // Repo cüzdan hesabına ödül yükleme
+    /// Load bounty into the repo wallet
     pub fn load_bounty_repo(
         accounts: &[AccountInfo],
         _program_id: &Pubkey,
@@ -547,7 +551,7 @@ impl Processor {
         Ok(())
     }
 
-    // Kullanıcının birden fazla repo için PR sayılarını gösteren fonksiyon
+    /// Get pull requests per user
     pub fn get_pull_requests_per_user(
         accounts: &[AccountInfo],
         program_id: &Pubkey,
