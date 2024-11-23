@@ -1,6 +1,6 @@
 use crate::{
     error::RNGProgramError::InvalidInstruction,
-    state::{GithubRepo, LoudBountyAccount, PrCountAccess, User, UserForCreate},
+    state::{GithubRepo, LoadBounty, PrCountAccess, UserForCreate},
 };
 use borsh::BorshDeserialize;
 use solana_program::program_error::ProgramError;
@@ -19,21 +19,13 @@ pub enum RNGProgramInstruction {
         github_username: String,
         phantom_wallet: [u8; 32],
     },
-    GetUser {
-        phantom_wallet: [u8; 32],
-    },
     CreateRepo {
         github_repo: GithubRepo,
     },
-    GetRepo,
-    GetRepoUrl {
-        id: String,
-    },
     Transfer,
-    LoasBountyRepo {
-        data: LoudBountyAccount,
+    LoadBounty {
+        data: LoadBounty,
     },
-    GetPRepo,
 }
 
 impl RNGProgramInstruction {
@@ -62,24 +54,16 @@ impl RNGProgramInstruction {
                 }
             }
             3 => {
-                let user: User = User::try_from_slice(&rest)?;
-                Self::GetUser {
-                    phantom_wallet: user.phantom_wallet,
-                }
+                let github_repo =
+                    GithubRepo::try_from_slice(&rest).map_err(|_| InvalidInstruction)?;
+                Self::CreateRepo { github_repo }
             }
-            4 => Self::CreateRepo {
-                github_repo: GithubRepo::try_from_slice(&rest)?,
-            },
-            5 => Self::GetRepo,
-            6 => {
-                let repo: GithubRepo = GithubRepo::try_from_slice(&rest)?;
-                Self::GetRepoUrl { id: repo.id }
+            4 => Self::Transfer,
+            5 => {
+                let data: LoadBounty =
+                    LoadBounty::try_from_slice(&rest).map_err(|_| InvalidInstruction)?;
+                Self::LoadBounty { data }
             }
-            7 => Self::Transfer,
-            8 => Self::LoasBountyRepo {
-                data: LoudBountyAccount::try_from_slice(&rest)?,
-            },
-            9 => Self::GetPRepo,
             _ => return Err(InvalidInstruction.into()),
         })
     }

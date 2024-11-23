@@ -1,14 +1,15 @@
 use crate::error::RNGProgramError::ArithmeticErr;
 use crate::{
     instruction::RNGProgramInstruction,
-    state::{GithubRepo, LoudBountyAccount, PrCount, User},
+    state::{GithubRepo, LoadBounty, PrCount, User},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+use solana_program::program::invoke;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     msg,
-    program::{invoke, invoke_signed},
+    program::invoke_signed,
     program_error::ProgramError,
     pubkey::Pubkey,
     rent::Rent,
@@ -40,31 +41,12 @@ impl Processor {
                 phantom_wallet,
             } => Self::create_user(accounts, _program_id, github_username, phantom_wallet),
 
-            RNGProgramInstruction::GetUser { phantom_wallet } => {
-                Self::get_user(accounts, _program_id, phantom_wallet)
-            }
-
             RNGProgramInstruction::CreateRepo { github_repo } => {
                 Self::create_repo(accounts, _program_id, github_repo)
             }
-
-            RNGProgramInstruction::GetRepo => {
-                let program_id = &_program_id; // Referansı alın
-                Self::get_all_repos(accounts, program_id) // Uygun şekilde fonksiyonu çağırın
-            }
-
-            RNGProgramInstruction::GetRepoUrl { id } => {
-                Self::get_repo_by_id(accounts, _program_id, id)
-            }
-
             RNGProgramInstruction::Transfer => Self::transfer_reward(accounts, _program_id),
-
-            RNGProgramInstruction::LoasBountyRepo { data } => {
+            RNGProgramInstruction::LoadBounty { data } => {
                 Self::load_bounty_repo(accounts, _program_id, data)
-            }
-
-            RNGProgramInstruction::GetPRepo => {
-                Self::get_pull_requests_per_user(accounts, _program_id)
             }
         }
     }
@@ -233,41 +215,6 @@ impl Processor {
         Ok(())
     }
 
-    /// Get user account data
-    pub fn get_user(
-        accounts: &[AccountInfo],
-        program_id: &Pubkey,
-        phantom_wallet: [u8; 32],
-    ) -> ProgramResult {
-        let account_info_iter = &mut accounts.iter();
-        let user_account = next_account_info(account_info_iter)?;
-
-        // Kullanıcı hesabının PDA adresi ile eşleşip eşleşmediğini kontrol et
-        let user_data = User::try_from_slice(&user_account.data.borrow())?;
-
-        let (user_pda_address, _bump) =
-            Pubkey::find_program_address(&[b"user_pda", &phantom_wallet], program_id);
-
-        let phantom_wallet_pubkey = Pubkey::new_from_array(phantom_wallet);
-
-        if user_pda_address != phantom_wallet_pubkey {
-            msg!("Provided public key does not match the derived PDA.");
-            return Err(ProgramError::InvalidArgument);
-        }
-
-        msg!(
-            "User: {}, Phantom Wallet: {:?}, Weekly PR Count: {}, Total Earnings: {}",
-            user_data.github_username,
-            user_data.phantom_wallet,
-            user_data.total_pr_count,
-            user_data.totalearn
-        );
-
-        user_data.serialize(&mut &mut user_account.try_borrow_mut_data()?[..])?;
-
-        Ok(())
-    }
-
     /// Create a new GitHub repo account
     pub fn create_repo(
         accounts: &[AccountInfo],
@@ -318,16 +265,15 @@ impl Processor {
             owner_wallet_address: data.owner_wallet_address,
             repo_wallet_address: repo_wallet_pda.to_bytes(),
         };
-
         let rent = Rent::default();
-        let repo_rent = rent.minimum_balance(184);
+        let repo_rent = rent.minimum_balance(224);
 
         invoke_signed(
             &system_instruction::create_account(
                 payer.key,
                 &github_repo_pda_address,
                 repo_rent,
-                184,
+                224,
                 program_id,
             ),
             &[github_repo_account.clone(), payer.clone()],
@@ -336,91 +282,6 @@ impl Processor {
 
         // Veriyi GitHub repo account'una yaz
         repo_info.serialize(&mut &mut github_repo_account.try_borrow_mut_data()?[..])?;
-
-        Ok(())
-    }
-
-    /// Get all GitHub repo accounts
-    pub fn get_all_repos(accounts: &[AccountInfo], program_id: &Pubkey) -> ProgramResult {
-        let mut github_repos: Vec<GithubRepo> = Vec::new();
-        let account_info_iter = &mut accounts.iter();
-
-        // Tüm hesapları dolaşarak GitHubRepo verilerini topluyoruz
-        for account_info in account_info_iter {
-            // PDA adresi olup olmadığını kontrol et
-            if account_info.owner != program_id {
-                msg!("Account does not belong to this program");
-                continue;
-            }
-
-            // PDA adresini doğrulamak için yeniden hesapla
-            let (expected_pda, _bump) = Pubkey::find_program_address(&[b"repo_pda"], program_id);
-            if *account_info.key != expected_pda {
-                msg!("Account is not the expected repo PDA");
-                continue;
-            }
-
-            // Hesaptan gelen veri boyutunu alalım
-            let data_len = account_info.try_data_len()?;
-
-            // Eğer veri varsa, deserialize edip listemize ekleyelim
-            if data_len > 0 {
-                let repo_info = GithubRepo::try_from_slice(&account_info.try_borrow_data()?)?;
-                github_repos.push(repo_info);
-            }
-        }
-
-        // Tüm repoları serialize et
-        let mut serialized_repos: Vec<u8> = Vec::new();
-        github_repos
-            .serialize(&mut serialized_repos)
-            .map_err(|err| {
-                msg!("Error serializing repo data: {:?}", err);
-                ProgramError::InvalidAccountData
-            })?;
-
-        // Serialize edilen veriyi client'a gönder
-        msg!("Serialized all Github repos: {:?}", serialized_repos);
-
-        Ok(())
-    }
-
-    /// Get a GitHub repo account by ID
-    pub fn get_repo_by_id(
-        accounts: &[AccountInfo],
-        program_id: &Pubkey,
-        id: String,
-    ) -> ProgramResult {
-        let account_info_iter = &mut accounts.iter();
-        let github_repo_account = next_account_info(account_info_iter)?;
-
-        let repo_data = GithubRepo::try_from_slice(&github_repo_account.data.borrow())?;
-
-        let (github_repo_pda_address, _bump) =
-            Pubkey::find_program_address(&[b"repo_pda", id.as_bytes()], program_id);
-
-        if github_repo_pda_address != *github_repo_account.key {
-            msg!(
-                "Provided public key ({:?}) does not match the derived PDA ({:?}).",
-                github_repo_account.key,
-                github_repo_pda_address
-            );
-            return Err(ProgramError::InvalidArgument);
-        }
-
-        msg!(
-        "Github Repo Name: {}, Github Repo Url: {}, Github Repo Description: {}, Total Pull Requests: {}, 
-        Pull Request Limit: {}, Reward Per Pull Request: {}, Owner Wallet Address: {:?}",
-        repo_data.repo_name,
-        repo_data.repo_url,
-        repo_data.repo_description,
-        repo_data.total_pull_requests,
-        repo_data.pull_request_limit,
-        repo_data.reward_per_pull_request,
-        repo_data.owner_wallet_address,
-    );
-
-        repo_data.serialize(&mut &mut github_repo_account.try_borrow_mut_data()?[..])?;
 
         Ok(())
     }
@@ -516,11 +377,12 @@ impl Processor {
     pub fn load_bounty_repo(
         accounts: &[AccountInfo],
         _program_id: &Pubkey,
-        data: LoudBountyAccount, // Yüklenecek SOL miktarı
+        data: LoadBounty,
     ) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
         let phantom_wallet_account = next_account_info(account_info_iter)?;
         let github_repo_account = next_account_info(account_info_iter)?;
+        let owner_wallet_account = next_account_info(account_info_iter)?;
 
         if !phantom_wallet_account.is_signer {
             msg!("Phantom wallet account is not a signer");
@@ -532,82 +394,58 @@ impl Processor {
             return Err(ProgramError::InvalidAccountData);
         }
 
-        // Phantom wallet'tan Repo Wallet PDA adresine SOL transferi
+        msg!("Received amount: {}", data.amount);
+
+        if **phantom_wallet_account.try_borrow_lamports()? < data.amount {
+            msg!("Not enough funds in the phantom wallet account");
+            return Err(ProgramError::InsufficientFunds);
+        }
+
+        msg!("Data {}", data.amount);
+
+        let commision: u64 = 5; // Komisyon oranı
+        let commision_amount = (data.amount * commision) / 100; // Komisyon miktarı
+        let bounty_amount = data.amount - commision_amount; // Ödül miktarı
+
+        msg!(
+            "Bounty amount: {}, Commision amount: {}",
+            bounty_amount,
+            commision_amount
+        );
+
+        // Phantom wallet'tan komisyon miktarı kadar SOL transferi
+        let commission_transfer_instruction = system_instruction::transfer(
+            phantom_wallet_account.key,
+            owner_wallet_account.key,
+            bounty_amount,
+        );
         invoke(
-            &system_instruction::transfer(
-                phantom_wallet_account.key,
-                github_repo_account.key,
-                data.amount,
-            ),
+            &commission_transfer_instruction,
+            &[phantom_wallet_account.clone(), owner_wallet_account.clone()],
+        )?;
+
+        msg!(
+            "Transferred commision amount: {} lamports to owner_wallet: {:?}",
+            commision_amount,
+            owner_wallet_account.key
+        );
+
+        // Phantom wallet'tan Repo Wallet PDA adresine SOL transferi
+        let bounty_transfer_instruction = system_instruction::transfer(
+            phantom_wallet_account.key,
+            github_repo_account.key,
+            commision_amount,
+        );
+        invoke(
+            &bounty_transfer_instruction,
             &[phantom_wallet_account.clone(), github_repo_account.clone()],
         )?;
 
         msg!(
             "Loaded {} lamports into the repo wallet address: {:?}",
-            data.amount,
-            github_repo_account.key
+            bounty_amount,
+            github_repo_account.key,
         );
-
-        Ok(())
-    }
-
-    /// Get pull requests per user
-    pub fn get_pull_requests_per_user(
-        accounts: &[AccountInfo],
-        program_id: &Pubkey,
-    ) -> ProgramResult {
-        let account_info_iter = &mut accounts.iter();
-        let user = next_account_info(account_info_iter)?;
-
-        // Kullanıcı verilerini oku
-        let user_data = User::try_from_slice(&user.data.borrow())?;
-
-        let account_info_vec: Vec<&AccountInfo> = account_info_iter.collect();
-
-        // Kullanıcıya ait repoları döngü ile gez
-        for chunk in account_info_vec.chunks(2) {
-            let github_repo_account = chunk[0]; // İlk hesap GithubRepo hesabı
-            let pr_count_account = chunk[1]; // İkinci hesap PR Count hesabı
-
-            let repo_data = GithubRepo::try_from_slice(&github_repo_account.data.borrow())?;
-            let pr_count_data = PrCount::try_from_slice(&pr_count_account.data.borrow())?;
-
-            // Repo PDA'sını hesapla ve doğrula
-            let (github_repo_pda_address, __bump) =
-                Pubkey::find_program_address(&[b"repo_pda", repo_data.id.as_bytes()], program_id);
-
-            if github_repo_pda_address != *github_repo_account.key {
-                msg!("Invalid Repo PDA for repo: {}", repo_data.repo_url);
-                continue; // Eğer PDA uyumsuzsa bu repo'yu atlayıp devam et
-            }
-
-            // PR Counter PDA'sını hesapla ve doğrula
-            let (pr_counter_address, _bump) = Pubkey::find_program_address(
-                &[
-                    b"pull request counter",
-                    user_data.github_username.as_ref(),
-                    repo_data.repo_url.as_ref(),
-                ],
-                program_id,
-            );
-
-            if pr_counter_address != *pr_count_account.key {
-                msg!(
-                    "Invalid PR Count PDA for user: {} and repo: {}",
-                    user_data.github_username,
-                    repo_data.repo_url
-                );
-                continue; // Eğer PDA uyumsuzsa bu PR'yi atlayıp devam et
-            }
-
-            // Kullanıcı ve repo için PR sayısını ekrana yazdır
-            msg!(
-                "User: {}, Repo: {}, Pull Requests: {}",
-                user_data.github_username,
-                repo_data.repo_url,
-                pr_count_data.prcount
-            );
-        }
 
         Ok(())
     }

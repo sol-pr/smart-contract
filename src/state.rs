@@ -36,7 +36,6 @@ pub struct GithubRepo {
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
 pub struct RepoWalletAccount {
     pub repo_wallet_address: [u8; 32],
-    
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
@@ -45,9 +44,8 @@ pub struct PrCount {
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
-pub struct LoudBountyAccount {
+pub struct LoadBounty {
     pub amount: u64,
-    
 }
 // #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
 // pub struct CheckTransfer {
