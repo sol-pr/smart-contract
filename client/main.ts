@@ -14,7 +14,7 @@ import {
 } from "@solana/web3.js";
 import { deserialize, serialize } from "borsh";
 import { User, UserShema, GithubRepo, GithubRepoShema, PrCount, PrCountShema, UserForCreate, UserForCreateShema, PrCountAccess, PrCountAccessShema } from "./models";
-const connection = new Connection("https://api.devnet.solana.com", "confirmed");
+const connection = new Connection("https://api.devnet.solana.com/", "confirmed");
 
 const privatekey = [96, 105, 112, 230, 111, 23, 182, 37, 224, 241, 51, 108, 76, 156, 240, 180, 3, 209, 232, 107, 148, 38, 252, 171, 79, 6, 53, 220, 154, 195, 76, 79, 29, 243, 93, 105, 64, 148, 53, 217, 112, 192, 90, 18, 120, 45, 250, 253, 196, 5, 196, 123, 226, 88, 239, 5, 225, 17, 12, 23, 143, 232, 58, 107]
 const payer = Keypair.fromSecretKey(Uint8Array.from(privatekey));
@@ -314,16 +314,19 @@ const transferReward = async (
 const loadBountyRepo = async (
   id: string,
   phantomWallet: PublicKey,
-  github_repo_account: PublicKey,
   amount: bigint,
 ) => {
   const data = Buffer.alloc(8); // 64-bit unsigned integer için 8 byte ayırıyoruz
   data.writeBigUInt64LE(amount); // Miktarı little-endian olarak yazıyoruz
 
+  const github_repo_account = PublicKey.findProgramAddressSync([Buffer.from("repo_pda"), Buffer.from("12345")], program_id);
+  const owner_wallet_account = new PublicKey("BUBtN9W8Ypt7S1w5otZVM7cU8HTgM7M2CjTt4z1L1Net");
+
   const instruction = new TransactionInstruction({
     keys: [
       { pubkey: phantomWallet, isSigner: true, isWritable: true },
-      { pubkey: github_repo_account, isSigner: false, isWritable: true },
+      { pubkey: github_repo_account[0], isSigner: false, isWritable: true },
+      { pubkey: owner_wallet_account, isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }
     ],
     data: data,
@@ -393,9 +396,11 @@ const getRepoBalace = async (
   // repo.repo_wallet_address = new Uint8Array(32);
 
   // await create_repo(repo);
+  var result = await getRepo("12345");
+  console.log(result);
 
-  // await loadBountyRepo("12345", wallet2, BigInt(0.1 * 1_000_000_000)); // 0.1 SOL
-  // console.log(await getRepo("12345")); 
+  await loadBountyRepo("12345", wallet1, BigInt(0.5 * 1_000_000_000)); // 0.5 SOL
+  console.log(await getRepo("12345"));
 
   // const result = await getRepoBalace("12345");
   // console.log("Repo balance:", result);
@@ -425,7 +430,7 @@ const getRepoBalace = async (
   //  await transferReward("12345", wallet1);
 
   // console.log("Getting user info...");
-  console.log(await getUser(wallet1.toBytes()));
+  // console.log(await getUser(wallet1.toBytes()));
 
 }
 )();
