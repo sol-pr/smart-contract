@@ -3,7 +3,7 @@ use crate::{
     state::{GithubRepo, LoadBounty, PrCountAccess, UserForCreate},
 };
 use borsh::BorshDeserialize;
-use solana_program::{msg, program_error::ProgramError};
+use solana_program::program_error::ProgramError;
 
 #[derive(Debug, PartialEq)]
 pub enum RNGProgramInstruction {
