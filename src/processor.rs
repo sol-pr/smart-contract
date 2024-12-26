@@ -253,11 +253,13 @@ impl Processor {
             &[&[b"repo_wallet", data.id.as_bytes(), &[wallet_bump]]],
         )?;
 
+        let mut serialized_data = vec![];
         // Veri yapılandırması
         let repo_info = GithubRepo {
             id: data.id.clone(),
             repo_url: data.repo_url,
             repo_name: data.repo_name,
+            is_active: 0,
             repo_description: data.repo_description,
             total_pull_requests: 0,
             pull_request_limit: data.pull_request_limit,
@@ -265,15 +267,18 @@ impl Processor {
             owner_wallet_address: data.owner_wallet_address,
             repo_wallet_address: repo_wallet_pda.to_bytes(),
         };
-        let rent = Rent::default();
-        let repo_rent = rent.minimum_balance(224);
+
+        repo_info.serialize(&mut serialized_data)?;
+
+        let space = serialized_data.len();
+        let lamports = Rent::default().minimum_balance(space); // Minimum lamport
 
         invoke_signed(
             &system_instruction::create_account(
                 payer.key,
                 &github_repo_pda_address,
-                repo_rent,
-                224,
+                lamports,
+                space as u64,
                 program_id,
             ),
             &[github_repo_account.clone(), payer.clone()],
@@ -318,6 +323,11 @@ impl Processor {
                 }
             };
 
+        if !githup_repo_data.is_active == 1 {
+            msg!("Repo is not active.");
+            return Err(ProgramError::InvalidArgument);
+        }
+
         let mut prcount_data = match PrCount::try_from_slice(&pr_counter_account.data.borrow()) {
             Ok(data) => data,
             Err(_) => {
@@ -357,6 +367,11 @@ impl Processor {
                 .checked_add(githup_repo_data.pull_request_limit)
                 .ok_or(ArithmeticErr)?;
 
+            if repo_wallet_account.lamports() < githup_repo_data.reward_per_pull_request {
+                msg!("Not enough funds in the repo wallet account, deactivating the repo.");
+                githup_repo_data.is_active = 0;
+            }
+
             prcount_data.prcount = 0;
             msg!(
                 "Transfer successful. Reward amount: {}",
@@ -381,15 +396,16 @@ impl Processor {
     ) -> ProgramResult {
         let account_info_iter = &mut accounts.iter();
         let phantom_wallet_account = next_account_info(account_info_iter)?;
-        let github_repo_account = next_account_info(account_info_iter)?;
         let owner_wallet_account = next_account_info(account_info_iter)?;
+        let repo_wallet_account = next_account_info(account_info_iter)?;
+        let repo_account = next_account_info(account_info_iter)?;
 
         if !phantom_wallet_account.is_signer {
             msg!("Phantom wallet account is not a signer");
             return Err(ProgramError::MissingRequiredSignature);
         }
 
-        if !github_repo_account.is_writable {
+        if !owner_wallet_account.is_writable {
             msg!("GitHub repo account is not writable");
             return Err(ProgramError::InvalidAccountData);
         }
@@ -416,37 +432,34 @@ impl Processor {
         // Phantom wallet'tan komisyon miktarı kadar SOL transferi
         let commission_transfer_instruction = system_instruction::transfer(
             phantom_wallet_account.key,
-            owner_wallet_account.key,
+            repo_wallet_account.key,
             bounty_amount,
         );
         invoke(
             &commission_transfer_instruction,
-            &[phantom_wallet_account.clone(), owner_wallet_account.clone()],
+            &[phantom_wallet_account.clone(), repo_wallet_account.clone()],
         )?;
-
-        msg!(
-            "Transferred commision amount: {} lamports to owner_wallet: {:?}",
-            commision_amount,
-            owner_wallet_account.key
-        );
 
         // Phantom wallet'tan Repo Wallet PDA adresine SOL transferi
         let bounty_transfer_instruction = system_instruction::transfer(
             phantom_wallet_account.key,
-            github_repo_account.key,
+            owner_wallet_account.key,
             commision_amount,
         );
         invoke(
             &bounty_transfer_instruction,
-            &[phantom_wallet_account.clone(), github_repo_account.clone()],
+            &[phantom_wallet_account.clone(), owner_wallet_account.clone()],
         )?;
 
-        msg!(
-            "Loaded {} lamports into the repo wallet address: {:?}",
-            bounty_amount,
-            github_repo_account.key,
-        );
+        // Repo'yu aktif hale getir
+        let mut repo_data = GithubRepo::try_from_slice(&repo_account.data.borrow())?;
 
+        if repo_data.reward_per_pull_request <= repo_wallet_account.lamports() {
+            repo_data.is_active = 1;
+        } else {
+            repo_data.is_active = 0;
+        }
+        repo_data.serialize(&mut &mut repo_account.try_borrow_mut_data()?[..])?;
         Ok(())
     }
 }
